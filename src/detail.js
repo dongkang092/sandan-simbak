@@ -14,9 +14,10 @@ const LAYERS = 5;   // 땅 두께 겹 수. 맨 위층(i=0)이 윗면. 나중에 
 const STEP = 2;     // 겹 간격 (SVG 유저 단위, y 축으로 아래로)
 const DEPTH = (LAYERS - 1) * STEP;  // 8 — 땅 폭(구미 139)의 6% 정도. 얇은 판.
 
-// ⚠ 가상 건물의 겹 간격. 땅(STEP=2)보다 촘촘하다 — rotateX 로 세로가 0.47배
-// 눌리는 걸 감안해도 STEP 이면 h=13 이 바닥 폭의 3배가 되어 성냥개비로 보인다.
-const BSTEP = 0.95;
+// ⚠ 가상 건물의 높이는 buildings.mock.json 의 b.h 가 그대로 SVG 유저 단위다
+// (예전처럼 겹 수가 아니다). #tilt 의 rotateX(52°) 때문에 화면에서는 cos(52°)≈0.62
+// 배로 눌려 보인다 — 실루엣 비율은 (h × 0.62) / w 로 읽힌다.
+// 값의 분포는 scripts/build_mock_buildings.py --stats 로 확인한다.
 
 // viewBox 를 (땅 + 두께) bbox 보다 넉넉하게 잡는다. 1 보다 클수록 축소.
 // 전체 윤곽이 프레임 안에 들어와야 어느 지역인지 읽힌다.
@@ -27,10 +28,12 @@ const SIDE_DARK = cssRGB("--land-side");
 const SIDE_LIGHT = cssRGB("--land-side-lit");
 const TOP = cssRGB("--land-top");
 
-// 건물 (가상 데이터) — 땅과 구분되는 밝은 회청색
-const BLDG_LOW = cssRGB("--bldg-low");
-const BLDG_HIGH = cssRGB("--bldg-high");
+// 건물 (가상 데이터) — 땅과 구분되는 밝은 회청색. 면 2개니까 색도 2개다.
+// 벽은 단색으로 칠한다 — 그라디언트를 걸면 상자가 아니라 유리처럼 보인다.
+// --bldg-high 그대로면 땅 윗면(--land-top)과 명도가 비슷해 경계가 안 보이므로
+// --bldg-low 쪽으로 35% 섞어 한 단 낮춘다. 색값은 theme.css 에만 있다.
 const BLDG_TOP = cssRGB("--bldg-top");
+const BLDG_WALL = lerp(cssRGB("--bldg-low"), cssRGB("--bldg-high"), 0.65);
 
 // path 문자열에서 숫자만 순서대로 뽑아 x, y 번갈아 읽는다.
 // frames.json 의 path 는 M/L/Z 절대좌표만 쓴다.
@@ -82,7 +85,7 @@ const bw = maxX - minX;
 const contentBot = maxY + DEPTH;
 // 건물은 위(-y)로 자라므로 땅 bbox 위로 삐져나온다. 액자에 같이 넣어야 안 잘린다.
 const contentTop = mockBuildings.reduce(
-  (t, b) => Math.min(t, b.y - b.d - b.h * BSTEP), minY);
+  (t, b) => Math.min(t, b.y - b.d - b.h), minY);
 const contentH = contentBot - contentTop;
 
 const svg = document.getElementById("land");
@@ -91,7 +94,7 @@ const tilt = document.getElementById("tilt");
 // #land 는 #tilt 를 그대로 채운다. aspect-ratio 를 주면 #stage 보다 높아져
 // overflow 에 걸리므로 JS 에서도 건드리지 않는다 — 액자는 viewBox 로만 잡는다.
 function layout() {
-  // getBoundingClientRect 는 rotateX/rotateZ 가 적용된 투영 사각형을 준다.
+  // getBoundingClientRect 는 rotateX 가 적용된 투영 사각형을 준다.
   // 레이아웃 박스를 봐야 한다 → clientWidth/Height.
   const cw = tilt.clientWidth, ch = tilt.clientHeight;
   if (!cw || !ch) return;
@@ -130,8 +133,14 @@ for (let i = LAYERS - 1; i >= 0; i--) {
   layers.appendChild(p);
 }
 
-// ⚠ 가상 건물 렌더링. 땅과 같은 겹 쌓기지만 방향이 반대다 —
-// 땅은 아래로(+y), 건물은 위로(-y) 쌓는다. 위층이 밝고 아래층이 어둡다.
+// ⚠ 가상 건물 렌더링. 상자 하나 = 면 2개.
+// rotateZ 가 없어 축이 정렬돼 있으므로 상자에서 보이는 면은 윗면과 앞면 둘뿐이다
+// (옆면·뒷면은 정확히 가려진다). 그래서 겹을 쌓을 필요가 없다 — 겹 쌓기는
+// 계단·띠를 만들고 요소 수를 h 배로 불린다.
+//   바닥 = (x, y-d) 에서 w×d, y 는 아래로 증가 → 앞쪽 변이 y.
+//   윗면 = 바닥을 h 만큼 위(-y)로 옮긴 사각형.        밝게 (BLDG_TOP)
+//   앞면 = 바닥 앞변(y) ~ 윗면 앞변(y-h) 사이.        어둡게 (BLDG_WALL)
+// 두 면 다 축 정렬 사각형이라 rect 로 그린다. 서로 겹치지 않아 순서는 상관없다.
 // buildings.mock.json 을 삭제하면 mockBuildings 가 빈 배열이 되어 아무것도 안 그린다.
 function renderBuildings() {
   const g = document.getElementById("buildings");
@@ -139,24 +148,24 @@ function renderBuildings() {
   if (!mockBuildings.length) return;
   badge.hidden = false;   // 가상 데이터가 실제로 화면에 있을 때만 배지를 켠다
 
+  // mockBuildings 는 y 오름차순(먼 쪽 먼저)이다. 뒤 건물을 먼저 그려야
+  // 앞 건물의 벽·옥상이 그 위를 덮어 가려진다.
   for (const b of mockBuildings) {
-    // x,y 는 좌하단. 바닥은 (x, y-d) 에서 w×d.
-    for (let i = 0; i < b.h; i++) {
-      const r = document.createElementNS(SVG_NS, "rect");
-      r.setAttribute("x", b.x);
-      r.setAttribute("y", b.y - b.d - i * BSTEP);
-      r.setAttribute("width", b.w);
-      // 바닥 깊이(d)가 겹 간격보다 얕으면 겹 사이가 벌어져 벽이 줄무늬로
-      // 끊긴다 → 아래층은 BSTEP 만큼 위로 더 늘려 다음 층이 덮게 한다.
-      r.setAttribute("height", i === b.h - 1 ? b.d : b.d + BSTEP);
-      if (i === b.h - 1) {
-        r.setAttribute("fill", rgb(BLDG_TOP));   // 옥상
-      } else {
-        const t = b.h > 2 ? i / (b.h - 2) : 1;   // 0 = 바닥, 1 = 옥상 바로 아래
-        r.setAttribute("fill", rgb(lerp(BLDG_LOW, BLDG_HIGH, t)));
-      }
-      g.appendChild(r);
-    }
+    const wall = document.createElementNS(SVG_NS, "rect");
+    wall.setAttribute("x", b.x);
+    wall.setAttribute("y", b.y - b.h);
+    wall.setAttribute("width", b.w);
+    wall.setAttribute("height", b.h);
+    wall.setAttribute("fill", rgb(BLDG_WALL));
+    g.appendChild(wall);
+
+    const top = document.createElementNS(SVG_NS, "rect");
+    top.setAttribute("x", b.x);
+    top.setAttribute("y", b.y - b.d - b.h);
+    top.setAttribute("width", b.w);
+    top.setAttribute("height", b.d);
+    top.setAttribute("fill", rgb(BLDG_TOP));
+    g.appendChild(top);
   }
 }
 

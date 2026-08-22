@@ -34,15 +34,36 @@ WARNING = (
 DENSITY = 180.0
 MIN_N, MAX_N = 10, 120
 
-# 클러스터 격자 간격. 지역이 크면 넓게 — 건물이 붙어 한 덩어리로 안 보이게.
-SP_MIN, SP_MAX = 3.0, 6.0
+# 클러스터 격자 간격. 건물 크기는 전부 이 값의 비율로 정하므로
+# sp 를 키우면 건물이 같은 비율로 커진다. 땅 폭이 90~200px 인데
+# 예전 sp(3~6)로는 건물이 1~4px 밖에 안 돼 화면에서 읽히지 않았다.
+SP_MIN, SP_MAX = 6.5, 13.0
+SP_DIV = 8.0        # sp = sqrt(면적) / SP_DIV, 위 범위로 clamp
 
-# 격자 간격 대비 바닥 크기 / 겹 수(높이). (크기 하한, 상한, 높이 하한, 상한)
+# 건물 사이 최소 간격(px). 격자 여유와 겹침 판정 양쪽에서 이 값을 뺀다 —
+# 상자가 맞붙으면 벽면이 이어져 한 덩어리로 읽힌다.
+GAP = 1.0
+
+# 건물 종류. w = sp 의 비율, d = w 의 비율, h = min(w,d) 의 배수.
+# 높이를 **바닥 대비 비율**로 주는 게 핵심이다. 절대값으로 주면 전부 비슷한
+# 키가 되어 아파트 단지처럼 보인다. 화면에서는 rotateX 로 높이만 cos(52°)≈0.62
+# 배 눌리므로, 실루엣 비율은 (h × 0.62) / w 로 읽힌다.
+#   hall  : 큰 공장동. 넓고 낮다 (실루엣 0.25~0.4).
+#   shed  : 작은 창고. 다수. 낮다 (0.55~0.9).
+#   block : 중간 (0.8~1.2).
+#   tower : 좁고 높다. 전체의 10~15% 만 (1.8~2.8).
+#            (w_lo, w_hi, dw_lo, dw_hi, h_lo, h_hi)
 CLASSES = {
-    "large":  (0.66, 0.86, 7, 13),   # 큰 공장동
-    "medium": (0.44, 0.62, 4, 8),
-    "small":  (0.26, 0.40, 2, 5),    # 낮은 창고
+    "hall":  (0.62, 0.90, 0.40, 0.75, 0.75, 1.15),
+    "shed":  (0.26, 0.42, 0.55, 1.10, 1.15, 1.75),
+    "block": (0.44, 0.60, 0.70, 1.15, 1.40, 2.10),
+    "tower": (0.20, 0.30, 0.85, 1.25, 3.00, 4.60),
 }
+# 배치 후 실현 비율은 이것과 다르다 — 바닥이 큰 hall 이 경계/겹침 판정에서
+# 더 많이 탈락하고 tower 가 더 많이 살아남는다. tower 는 실현 12% 를 노려
+# 낮게 잡는다. 바꿨으면 --stats 로 실현 비율을 확인할 것.
+MIX = {"tower": 0.11, "hall": 0.15, "block": 0.22}   # 나머지는 shed
+H_MIN = 2.0   # 아무리 낮아도 상자로 보이게 하는 하한
 
 
 # ── 기하 (순수 파이썬) ──────────────────────────────────
@@ -104,48 +125,62 @@ def fits(x, y, w, d, ring):
 
 
 def overlaps(a, placed):
-    """이미 놓인 건물과 바닥이 겹치는가. 클러스터 중심은 서로 독립이라
-    클러스터끼리 포개질 수 있어 여기서 한 번 걸러야 한다."""
+    """이미 놓인 건물과 바닥이 GAP 안으로 접근하는가. 클러스터 중심은 서로
+    독립이라 클러스터끼리 포개질 수 있어 여기서 한 번 걸러야 한다."""
+    ax0, ax1 = a["x"] - GAP, a["x"] + a["w"] + GAP
+    ay0, ay1 = a["y"] - a["d"] - GAP, a["y"] + GAP
     for b in placed:
-        if (a["x"] < b["x"] + b["w"] and b["x"] < a["x"] + a["w"]
-                and a["y"] - a["d"] < b["y"] and b["y"] - b["d"] < a["y"]):
+        if (ax0 < b["x"] + b["w"] and b["x"] < ax1
+                and ay0 < b["y"] and b["y"] - b["d"] < ay1):
             return True
     return False
+
+
+def kind_mix(want, rng):
+    """종류를 비율대로 섞은 리스트. tower 는 MIX 비율만큼만 — 좁고 높은 게
+    많아지면 특징이 아니라 기본값이 된다."""
+    kinds = []
+    for kind, frac in MIX.items():
+        kinds += [kind] * round(want * frac)
+    kinds += ["shed"] * max(0, want - len(kinds))
+    rng.shuffle(kinds)
+    return kinds[:want]
 
 
 def cluster(ring, center, want, sp, rng, placed):
     """클러스터 하나. 격자 + jitter 로 산업단지처럼 뭉쳐 배치한다.
     placed 에 통과한 건물을 직접 넣는다."""
     cx, cy = center
-    side = max(2, math.ceil(math.sqrt(want)))
-    # 대형 1~2개 + 중형 몇 개 + 소형 다수
-    n_large = rng.randint(1, 2)
-    n_medium = max(1, round(want * 0.25))
-    kinds = (["large"] * n_large + ["medium"] * n_medium)
-    kinds += ["small"] * max(0, want - len(kinds))
-    rng.shuffle(kinds)
-
+    kinds = kind_mix(want, rng)
+    # 칸을 개수보다 넉넉히 잡아 격자를 다 채우지 않는다 — 꽉 채우면
+    # 블록처럼 규칙적으로 보이고, 경계에 걸린 칸 때문에 개수도 못 채운다.
+    side = max(2, math.ceil(math.sqrt(want * 1.4)))
     cells = [(i, j) for i in range(side) for j in range(side)]
     rng.shuffle(cells)
 
     made = 0
     for kind, (i, j) in zip(kinds, cells):
-        lo, hi, h_lo, h_hi = CLASSES[kind]
-        w = sp * rng.uniform(lo, hi)
-        # 정사각형만 나오지 않게. 격자 칸을 넘으면 옆 건물과 겹쳐 버려지므로 제한한다.
-        d = min(w * rng.uniform(0.7, 1.25), sp * 0.88)
-        # 격자 중심 + 흔들림. jitter 는 남는 여유의 절반까지만 — 겹치지 않는다.
+        w_lo, w_hi, dw_lo, dw_hi, h_lo, h_hi = CLASSES[kind]
+        # 한 칸(sp)에서 GAP 을 뺀 만큼만 쓴다 → 이웃 칸과 최소 간격이 남는다.
+        room = max(1.0, sp - GAP)
+        w = min(room, sp * rng.uniform(w_lo, w_hi))
+        # 정사각형만 나오지 않게 깊이를 따로 흔든다.
+        d = min(room, w * rng.uniform(dw_lo, dw_hi))
+        # 높이는 바닥의 짧은 변 기준. hall 은 1배 미만, tower 는 3~4배.
+        h = max(H_MIN, min(w, d) * rng.uniform(h_lo, h_hi))
+        # 격자 중심 + 흔들림. jitter 는 칸에 남는 여유의 절반까지만.
         gx = cx + (i - (side - 1) / 2) * sp
         gy = cy + (j - (side - 1) / 2) * sp
-        gx += rng.uniform(-1, 1) * max(0.0, sp - w) * 0.45
-        gy += rng.uniform(-1, 1) * max(0.0, sp - d) * 0.45
+        gx += rng.uniform(-1, 1) * max(0.0, sp - w - GAP) * 0.5
+        gy += rng.uniform(-1, 1) * max(0.0, sp - d - GAP) * 0.5
         # x,y = 좌하단 (y 는 아래로 증가). 반올림한 값으로 판정해야
         # 출력 좌표 기준으로 내부가 보장된다.
         b = {
             "x": round(gx - w / 2, 1), "y": round(gy + d / 2, 1),
             "w": round(w, 2), "d": round(d, 2),
-            "h": rng.randint(h_lo, h_hi),
+            "h": round(h, 2),
         }
+        b["_kind"] = kind   # 통계용. 출력 직전에 지운다.
         if not fits(b["x"], b["y"], b["w"], b["d"], ring):
             continue
         if overlaps(b, placed):
@@ -158,13 +193,13 @@ def cluster(ring, center, want, sp, rng, placed):
 def build_region(ring, rng):
     area = area_of(ring)
     target = max(MIN_N, min(MAX_N, round(area / DENSITY)))
-    sp = max(SP_MIN, min(SP_MAX, math.sqrt(area) / 18))
+    sp = max(SP_MIN, min(SP_MAX, math.sqrt(area) / SP_DIV))
     n_clusters = max(2, min(4, 2 + target // 40))
 
     out = []
     # 클러스터 중심이 좁은 자락에 걸리면 격자가 거의 다 밖으로 나간다 →
     # 목표 개수에 못 미치면 중심을 다시 뽑아 몇 번 더 시도한다.
-    for attempt in range(n_clusters * 4):
+    for attempt in range(n_clusters * 6):
         if len(out) >= target:
             break
         c = pick_interior(ring, rng)
@@ -175,10 +210,35 @@ def build_region(ring, rng):
     return out[:target]
 
 
+def report(buildings):
+    """CLASSES / MIX 를 손본 뒤 실제로 어떤 분포가 나왔는지 확인하는 용도."""
+    allb = [b for v in buildings.values() for b in v]
+    n = len(allb)
+    def q(vals, p):
+        vals = sorted(vals)
+        return vals[int(p * (len(vals) - 1))]
+    print("  종류      개수   비율   바닥w(중앙)  높이h(중앙)  실루엣 h*.62/w")
+    for kind in ("hall", "shed", "block", "tower"):
+        g = [b for b in allb if b["_kind"] == kind]
+        if not g:
+            continue
+        sil = [b["h"] * 0.62 / b["w"] for b in g]
+        print(f"    {kind:6s} {len(g):5d} {100*len(g)/n:5.1f}%"
+              f"      {q([b['w'] for b in g], .5):5.1f}"
+              f"      {q([b['h'] for b in g], .5):6.1f}"
+              f"       {q(sil, .5):.2f}")
+    ws = [b["w"] for b in allb]
+    hs = [b["h"] for b in allb]
+    print(f"  바닥 w  p05/p50/p95 = {q(ws,.05):.1f} / {q(ws,.5):.1f} / {q(ws,.95):.1f}")
+    print(f"  높이 h  p05/p50/p95 = {q(hs,.05):.1f} / {q(hs,.5):.1f} / {q(hs,.95):.1f}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--seed", type=int, default=20260822,
                     help="난수 시드. 같은 시드면 같은 배치가 나온다.")
+    ap.add_argument("--stats", action="store_true",
+                    help="종류별 실현 비율 / 바닥·높이 분포를 찍는다.")
     args = ap.parse_args()
 
     data = json.loads(SRC.read_text(encoding="utf-8"))
@@ -188,6 +248,14 @@ def main():
     for key, region in data["regions"].items():
         ring = parse_ring(region["path"])
         buildings[key] = build_region(ring, rng)
+
+    if args.stats:
+        report(buildings)
+
+    # _kind 는 스키마에 없다. 출력 전에 제거한다.
+    for v in buildings.values():
+        for b in v:
+            b.pop("_kind", None)
 
     OUT.write_text(
         json.dumps({"_WARNING": WARNING, "buildings": buildings},

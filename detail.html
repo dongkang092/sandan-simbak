@@ -25,14 +25,19 @@
        생겨 판이 휘어 보인다. 아이소메트릭은 평행선이 유지되는 투영이다. */
     #stage { position: absolute; inset: 0; overflow: hidden; }
 
-    /* rotateX 로 세로가 cos(62°)≈0.469 배 눌린다. #tilt 를 #stage 높이 그대로 두면
-       평면이 화면 세로의 47% 밖에 안 되므로, 눌리는 만큼 미리 늘려 둔다.
-       100% / 0.469 ≈ 213% 가 정확한 보정이지만 rotateZ 로 평면이 자기 안에서
-       돌아가며 가로로 조금 넘치므로 186% (top/bottom -43%) 로 줄인다.
-       음수 inset 이라 위아래로 똑같이 넘치고, 결과적으로 중앙에 온다.
+    /* rotateX 만 쓴다. rotateZ 를 걸면 평면이 자기 안에서 돌아가 바닥 격자선이
+       대각선이 되고 지형도 비스듬히 눕는다 — 모형도처럼 보이려면 축 정렬이 맞아야
+       한다. rotateZ 가 없으므로 격자 가로선은 완전히 수평, 세로선은 수직이다.
+       또 이 덕분에 상자에서 보이는 면이 윗면·앞면 둘뿐이라 폴리곤 2개로 그릴 수 있다.
+
+       rotateX(52°) 로 세로가 cos(52°)≈0.616 배 눌린다. #tilt 를 #stage 높이 그대로
+       두면 평면이 화면 세로의 62% 밖에 안 되므로, 눌리는 만큼 미리 늘려 둔다.
+       100% / 0.616 ≈ 162% → top/bottom 각각 -31%. 음수 inset 이라 위아래로
+       똑같이 넘치고, 결과적으로 중앙에 온다. (rotateZ 가 없어 가로 넘침 보정이
+       필요없다 — 예전처럼 배율을 깎지 않는다.)
        #land 에 aspect-ratio 를 주면 #stage 보다 높아져 overflow 에 걸리므로 주지 않는다. */
-    #tilt { position: absolute; left: 0; right: 0; top: -43%; bottom: -43%;
-            transform: rotateX(62deg) rotateZ(-8deg); transform-origin: 50% 50%; }
+    #tilt { position: absolute; left: 0; right: 0; top: -31%; bottom: -31%;
+            transform: rotateX(52deg); transform-origin: 50% 50%; }
 
     /* 바닥면 — #tilt 와 같은 평면에 누워 있다. 여백이 빈 곳이 아니라 공간으로
        보이게 하는 게 목적이라 #tilt 보다 훨씬 크게 뺀다. #stage 가 잘라준다.
