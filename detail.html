@@ -95,23 +95,16 @@
             <filter id="ground-shadow" x="-40%" y="-40%" width="180%" height="180%">
               <feDropShadow dx="0" dy="7" stdDeviation="5"/>
             </filter>
-            <!-- ⚠ 가상 단지 바닥. 건물 바닥면들을 부풀려(dilate) 서로 붙인 뒤
-                 흐리고 문턱을 걸어 단면을 다시 또렷하게 만든다 = 모폴로지 닫기.
-                 결과는 **건물이 실제로 모여 있는 모양**을 감싸는 유기적인 외곽이다.
-                 사각형 깔개는 건물 분포와 모양이 달라 빈 구석이 생기고 서로 겹쳤다.
-                 radius 를 키우면 더 뭉뚱그려지고, 줄이면 건물별로 쪼개진다. -->
-            <filter id="site-blob" x="-15%" y="-15%" width="130%" height="130%">
-              <!-- 크게 부풀려 이웃 건물끼리 붙이고(dilate), 그만큼 다시 깎는다
-                   (erode). 이게 모폴로지 "닫기"다. 손잡이가 둘인데 역할이 다르다:
-                     · 두 값의 **차이** = 건물 밖으로 나오는 여유 (6-2.5≈3.5px)
-                     · **dilate 값** = 메울 수 있는 빈틈의 크기. 이게 크면 건물
-                       셋이 삼각형으로 서 있을 때 그 **안쪽까지 다 채워져** 답답해진다.
-                   건물 사이 잉여공간을 줄이려면 **두 값을 같이 낮춘다** (차이는
-                   유지). erode 만 키우면 여유가 깎여 건물에 딱 붙어버린다. -->
-              <feMorphology operator="dilate" radius="6"/>
-              <feMorphology operator="erode" radius="2.5"/>
-              <feGaussianBlur stdDeviation="2.2"/>
-              <!-- 알파 문턱. 흐린 경계를 다시 자른다 (0.5 기준 계단) -->
+            <!-- ⚠ 가상 단지 바닥의 마감. 모양 자체는 detail.js 가 만든다
+                 (건물 앞치마 + 건물끼리 잇는 목). 여기서는 이어붙인 자리의
+                 각을 죽이고 경계를 다시 또렷하게 만드는 일만 한다.
+                 흐림 → 알파 문턱 = 도형들의 합집합을 하나의 매끈한 외곽으로.
+                 예전에는 dilate/erode(모폴로지 닫기)로 모양까지 만들었는데,
+                 그러면 건물 사이가 통째로 메워지거나(답답함) 반대로 고리 안쪽에
+                 **구멍**이 남고 멀리 떨어진 건물이 **고립**됐다. 둘 다 모폴로지로는
+                 막을 수 없다 — 그래서 모양을 기하로 직접 만든다. -->
+            <filter id="site-smooth" x="-15%" y="-15%" width="130%" height="130%">
+              <feGaussianBlur stdDeviation="1.4"/>
               <feComponentTransfer>
                 <feFuncA type="discrete" tableValues="0 1"/>
               </feComponentTransfer>

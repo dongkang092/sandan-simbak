@@ -41,7 +41,14 @@ const TOP = cssRGB("--land-top");
 const BLDG_TOP = cssRGB("--bldg-top");
 const BLDG_ANCHOR_TOP = cssRGB("--bldg-anchor-top");
 const BLDG_WALL = lerp(cssRGB("--bldg-low"), cssRGB("--bldg-high"), 0.65);
-// 단지 바닥의 부풀림은 #site-blob 필터의 radius 가 정한다 (detail.html).
+// 단지 바닥. 건물 바닥면을 APRON 만큼 부풀린 앞치마 + 건물끼리 잇는 목(NECK).
+// 목은 **최소신장나무(MST)** 의 간선에만 그린다:
+//   · 나무는 모든 건물을 잇는다  → 고립된 건물이 없다
+//   · 나무에는 순환이 없다       → 고리 안쪽에 구멍이 생길 수 없다
+// 예전의 모폴로지 닫기는 이 두 가지를 보장할 수 없었다 (빈틈을 넓게 메우면
+// 답답하고, 좁게 메우면 구멍과 고립이 생긴다).
+const APRON = 3.5;   // 건물 밖으로 나오는 여유(px)
+const NECK = 2.0;    // 잇는 목의 반폭. APRON 보다 좁아야 "목"으로 읽힌다
 const PAD_FILL = cssRGB("--cluster-pad");
 const PAD_ALPHA = 0.72;  // 1 이면 깔개가 땅을 덮어 회색 판처럼 보인다
 
@@ -178,6 +185,33 @@ function circle(g, cx, cy, r, fill) {
 // 깔고 #site-blob 필터(dilate + blur + 문턱 = 모폴로지 닫기)로 부풀려 붙인다.
 // bbox 사각형은 분포와 모양이 달라 빈 구석이 남고 클러스터끼리 겹쳤다.
 // 클러스터별로 나누지 않아도 된다 — 멀리 떨어진 무리는 부풀려도 붙지 않는다.
+// 건물 바닥면의 중심. 상자는 (x, y-d)~(x+w, y) 사각형, 원통은 지름 w 의 원.
+function footCenter(b) {
+  return b.shape === "cyl"
+    ? { x: b.x + b.w / 2, y: b.y - b.w / 2 }
+    : { x: b.x + b.w / 2, y: b.y - b.d / 2 };
+}
+
+// 최소신장나무 (Prim). 클러스터당 건물이 10여 채라 O(n²) 로 충분하다.
+function mstEdges(pts) {
+  const inTree = [0];
+  const out = pts.map((_, i) => i).slice(1);
+  const edges = [];
+  while (out.length) {
+    let best = null;
+    for (const i of inTree) {
+      for (const j of out) {
+        const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+        if (!best || d < best.d) best = { i, j, d };
+      }
+    }
+    edges.push([pts[best.i], pts[best.j]]);
+    inTree.push(best.j);
+    out.splice(out.indexOf(best.j), 1);
+  }
+  return edges;
+}
+
 function renderPads() {
   const g = document.getElementById("pads");
   if (!mockBuildings.length) return;
@@ -194,17 +228,40 @@ function renderPads() {
   // 필터는 그룹 하나에 건다. 안쪽 도형은 전부 같은 색·불투명 — 필터가 보는 건
   // 알파뿐이고, 색과 투명도는 그룹에서 정한다.
   const inner = document.createElementNS(SVG_NS, "g");
-  inner.setAttribute("filter", "url(#site-blob)");
+  inner.setAttribute("filter", "url(#site-smooth)");
   inner.setAttribute("fill", rgb(PAD_FILL));
-  for (const b of mockBuildings) {
-    // 바닥면. 상자는 (x, y-d) 에서 w×d, 원통은 지름 w 의 원.
-    if (b.shape === "cyl") {
-      const r = b.w / 2;
-      circle(inner, b.x + r, b.y - r, r, rgb(PAD_FILL));
-    } else {
-      rect(inner, b.x, b.y - b.d, b.w, b.d, rgb(PAD_FILL));
+
+  const byCluster = {};
+  for (const b of mockBuildings) (byCluster[b.clusterId] ??= []).push(b);
+
+  for (const group of Object.values(byCluster)) {
+    // 앞치마: 바닥면을 APRON 만큼 키운다. 원통은 반지름만 늘리면 된다.
+    for (const b of group) {
+      if (b.shape === "cyl") {
+        const c = footCenter(b);
+        circle(inner, c.x, c.y, b.w / 2 + APRON, rgb(PAD_FILL));
+      } else {
+        const el = rect(inner, b.x - APRON, b.y - b.d - APRON,
+                        b.w + APRON * 2, b.d + APRON * 2, rgb(PAD_FILL));
+        el.setAttribute("rx", APRON);
+      }
+    }
+    // 목: MST 간선마다 굵은 선 하나. 건물 밑을 지나가지만 깔개는 건물보다
+    // 아래에 그려지므로 보이지 않는다.
+    if (group.length < 2) continue;
+    for (const [a, b] of mstEdges(group.map(footCenter))) {
+      const ln = document.createElementNS(SVG_NS, "line");
+      ln.setAttribute("x1", a.x);
+      ln.setAttribute("y1", a.y);
+      ln.setAttribute("x2", b.x);
+      ln.setAttribute("y2", b.y);
+      ln.setAttribute("stroke", rgb(PAD_FILL));
+      ln.setAttribute("stroke-width", NECK * 2);
+      ln.setAttribute("stroke-linecap", "round");
+      inner.appendChild(ln);
     }
   }
+
   inner.setAttribute("opacity", PAD_ALPHA);
   g.appendChild(inner);
 }
