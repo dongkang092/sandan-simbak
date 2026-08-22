@@ -6,17 +6,13 @@ import { cssRGB, lerp, rgb } from "./theme.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const LAYERS = 22;  // 땅 두께 겹 수. 맨 위층(i=0)이 윗면. 나중에 전력량에 연동한다.
+const LAYERS = 5;   // 땅 두께 겹 수. 맨 위층(i=0)이 윗면. 나중에 전력량에 연동한다.
 const STEP = 2;     // 겹 간격 (SVG 유저 단위, y 축으로 아래로)
-const DEPTH = (LAYERS - 1) * STEP;
+const DEPTH = (LAYERS - 1) * STEP;  // 8 — 땅 폭(구미 139)의 6% 정도. 얇은 판.
 
-// viewBox 를 (땅 + 두께) 보다 좁게 잡아 지역이 프레임을 넘치게 한다.
-// 1 보다 작을수록 확대. 외곽선이 잘려나가는 건 의도다.
-const ZOOM = 0.82;
-// 프레임 아래쪽에 남기는 여유 (vbH 비율). perspective 가 가까운(아래) 쪽을 확대해서
-// 평면의 아래 약 11% 는 #stage 밖으로 밀려난다 — 그 값이 평면 높이에 비례하므로
-// DEPTH 배수가 아니라 프레임 비율로 잡아야 세로로 긴 화면에서도 두께가 안 잘린다.
-const NEAR_PAD = 0.17;
+// viewBox 를 (땅 + 두께) bbox 보다 넉넉하게 잡는다. 1 보다 클수록 축소.
+// 전체 윤곽이 프레임 안에 들어와야 어느 지역인지 읽힌다.
+const PAD = 1.15;
 
 // 아래층 어둡게 → 위층 밝게. 맨 위층은 윗면 색. 색값은 theme.css 에만 있다.
 const SIDE_DARK = cssRGB("--land-side");
@@ -69,23 +65,24 @@ const tilt = document.getElementById("tilt");
 // #land 는 #tilt 를 그대로 채운다. aspect-ratio 를 주면 #stage 보다 높아져
 // overflow 에 걸리므로 JS 에서도 건드리지 않는다 — 액자는 viewBox 로만 잡는다.
 function layout() {
-  // getBoundingClientRect 는 rotateX 가 적용된 투영 사각형을 준다 (aspect 가 2.6배 부풀어
-  // viewBox 가 통째로 줌아웃됐다). 레이아웃 박스를 봐야 한다 → clientWidth/Height.
+  // getBoundingClientRect 는 rotateX/rotateZ 가 적용된 투영 사각형을 준다.
+  // 레이아웃 박스를 봐야 한다 → clientWidth/Height.
   const cw = tilt.clientWidth, ch = tilt.clientHeight;
   if (!cw || !ch) return;
 
-  // #tilt 가 foreshortening 만큼 미리 늘어나 있으므로, 여기서 (땅 + 두께) 기준으로
-  // 프레임을 잡으면 preserveAspectRatio 의 meet 이 화면 기준으로 맞아떨어진다.
-  let vbW = bw * ZOOM;
-  let vbH = (contentH / (1 - NEAR_PAD)) * ZOOM;
-  // 프레임이 평면보다 납작하면 meet 이 가로를 기준으로 맞춘다 → 세로를 평면 비율까지 늘린다.
+  // (땅 + 두께) bbox 에 PAD 만큼 여유를 두고, 짧은 축을 #tilt 비율까지 넓혀
+  // preserveAspectRatio 의 meet 이 letterbox 를 만들지 않게 한다.
+  // #tilt 가 foreshortening 만큼 미리 늘어나 있으므로 이 비율이 화면 기준으로 맞는다.
+  let vbW = bw * PAD;
+  let vbH = contentH * PAD;
   if (vbW / vbH > cw / ch) vbH = vbW * ch / cw;
+  else                     vbW = vbH * cw / ch;
 
-  // 가로는 cx 중심. 세로는 가까운 쪽(아래) 끝에 NEAR_PAD 만큼 여유를 두고 아래 정렬하고,
-  // 먼 쪽(위)을 잘라낸다 — 두께가 안 보이면 의미가 없고, 위쪽이 잘리는 건 땅이
-  // 화면 밖으로 이어지는 것으로 읽힌다.
+  // 잘라내지 않으므로 그냥 bbox 중심에 맞춘다.
+  const midX = (minX + maxX) / 2;
+  const midY = (minY + contentBot) / 2;
   svg.setAttribute("viewBox",
-    `${region.cx - vbW / 2} ${contentBot - vbH * (1 - NEAR_PAD)} ${vbW} ${vbH}`);
+    `${midX - vbW / 2} ${midY - vbH / 2} ${vbW} ${vbH}`);
 }
 
 // 같은 path 를 LAYERS 겹 복제. 깊은 층부터 붙여 맨 위층이 마지막에 그려지게 한다.

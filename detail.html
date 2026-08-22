@@ -21,19 +21,18 @@
 
     #wrap { position: relative; width: 100%; height: 100%; }
 
-    /* 2.5D: 감싸는 div 에 perspective, 안쪽 div 를 rotateX */
-    #stage { position: absolute; inset: 0; perspective: 1200px;
-             perspective-origin: 50% 50%; overflow: hidden; }
+    /* 2.5D: 직교 투영. perspective 를 주지 않는다 — 큰 평면에 걸면 키스톤 왜곡이
+       생겨 판이 휘어 보인다. 아이소메트릭은 평행선이 유지되는 투영이다. */
+    #stage { position: absolute; inset: 0; overflow: hidden; }
 
-    /* rotateX 로 세로가 cos(55°)≈0.574 배 눌린다. #tilt 를 #stage 높이 그대로 두면
-       평면이 화면 세로의 57% 밖에 안 되고, 그 안에 두께(44px)까지 넣으려면 땅을
-       60% 씩 잘라내야 한다. 그래서 눌리는 만큼 미리 늘려 둔다:
-       100% / 0.574 ≈ 174%. 여기서는 바닥이 보이도록 조금 덜 줘서 148%
-       (top/bottom -24%) — 평면의 화면상 높이가 #stage 의 약 85% 가 된다.
+    /* rotateX 로 세로가 cos(52°)≈0.616 배 눌린다. #tilt 를 #stage 높이 그대로 두면
+       평면이 화면 세로의 62% 밖에 안 되므로, 눌리는 만큼 미리 늘려 둔다.
+       100% / 0.616 ≈ 162% 가 정확한 보정이지만 rotateZ 로 평면이 자기 안에서
+       돌아가며 가로로 조금 넘치므로 142% (top/bottom -21%) 로 줄인다.
        음수 inset 이라 위아래로 똑같이 넘치고, 결과적으로 중앙에 온다.
        #land 에 aspect-ratio 를 주면 #stage 보다 높아져 overflow 에 걸리므로 주지 않는다. */
-    #tilt { position: absolute; left: 0; right: 0; top: -24%; bottom: -24%;
-            transform: rotateX(55deg); transform-origin: 50% 50%; }
+    #tilt { position: absolute; left: 0; right: 0; top: -21%; bottom: -21%;
+            transform: rotateX(52deg) rotateZ(-8deg); transform-origin: 50% 50%; }
 
     /* 바닥면 — #tilt 와 같은 평면에 누워 있다. 여백이 빈 곳이 아니라 공간으로
        보이게 하는 게 목적이라 #tilt 보다 훨씬 크게 뺀다. #stage 가 잘라준다.
@@ -47,7 +46,7 @@
              -webkit-mask-image: linear-gradient(to bottom, transparent 30%, #000 46%);
              mask-image: linear-gradient(to bottom, transparent 30%, #000 46%); }
 
-    /* SVG 기본 overflow:hidden 을 그대로 둔다 → 외곽선이 viewBox 를 넘으면 잘린다 (의도) */
+    /* viewBox 를 bbox 보다 넉넉히 잡으므로 외곽선 전체가 프레임 안에 들어온다 */
     #land { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 
     /* flood-color 는 SVG 속성으로는 var() 를 못 받는다 → CSS 로 건다 */
