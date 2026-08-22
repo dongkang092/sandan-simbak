@@ -68,8 +68,8 @@ GAP = 1.0
 
 # 건물 종류. w = sp 의 비율, d = w 의 비율, h = min(w,d) 의 배수.
 # 높이를 **바닥 대비 비율**로 주는 게 핵심이다. 절대값으로 주면 전부 비슷한
-# 키가 되어 아파트 단지처럼 보인다. 화면에서는 rotateX 로 높이만 cos(52°)≈0.62
-# 배 눌리므로, 실루엣 비율은 (h × 0.62) / w 로 읽힌다.
+# 키가 되어 아파트 단지처럼 보인다. 화면에서는 rotateX 로 높이만 cos(64°)≈0.44
+# 배 눌리므로, 실루엣 비율은 (h × 0.44) / w 로 읽힌다 (각도는 detail.html #tilt).
 #   hall  : 큰 공장동. 넓고 낮다 (실루엣 0.25~0.4).
 #   shed  : 작은 창고. 다수. 낮다 (0.55~0.9).
 #   block : 중간 (0.8~1.2).
@@ -86,6 +86,8 @@ CLASSES = {
 # 낮게 잡는다. 바꿨으면 --stats 로 실현 비율을 확인할 것.
 MIX = {"tower": 0.11, "hall": 0.15, "block": 0.22}   # 나머지는 shed
 H_MIN = 2.0   # 아무리 낮아도 상자로 보이게 하는 하한
+# cos(detail.html #tilt 의 rotateX). --stats 의 실루엣 계산에만 쓴다.
+FORESHORTEN = 0.44
 
 
 # ── 기하 (순수 파이썬) ──────────────────────────────────
@@ -304,7 +306,7 @@ def report(buildings):
         g = [b for b in allb if b["_kind"] == kind]
         if not g:
             continue
-        sil = [b["h"] * 0.62 / b["w"] for b in g]
+        sil = [b["h"] * FORESHORTEN / b["w"] for b in g]
         print(f"    {kind:6s} {len(g):5d} {100*len(g)/n:5.1f}%"
               f"      {q([b['w'] for b in g], .5):5.1f}"
               f"      {q([b['h'] for b in g], .5):6.1f}"

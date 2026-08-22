@@ -30,14 +30,15 @@
        한다. rotateZ 가 없으므로 격자 가로선은 완전히 수평, 세로선은 수직이다.
        또 이 덕분에 상자에서 보이는 면이 윗면·앞면 둘뿐이라 폴리곤 2개로 그릴 수 있다.
 
-       rotateX(52°) 로 세로가 cos(52°)≈0.616 배 눌린다. #tilt 를 #stage 높이 그대로
-       두면 평면이 화면 세로의 62% 밖에 안 되므로, 눌리는 만큼 미리 늘려 둔다.
-       100% / 0.616 ≈ 162% → top/bottom 각각 -31%. 음수 inset 이라 위아래로
-       똑같이 넘치고, 결과적으로 중앙에 온다. (rotateZ 가 없어 가로 넘침 보정이
+       rotateX(64°) 로 세로가 cos(64°)≈0.438 배 눌린다. #tilt 를 #stage 높이 그대로
+       두면 평면이 화면 세로의 44% 밖에 안 되므로, 눌리는 만큼 미리 늘려 둔다.
+       100% / 0.438 ≈ 228% → top/bottom 각각 -64%. 음수 inset 이라 위아래로
+       똑같이 넘치고, 결과적으로 중앙에 온다. **각도를 바꾸면 이 값도 같이
+       바꿔야 한다** — 안 바꾸면 판이 화면 세로를 못 채우거나 잘린다. (rotateZ 가 없어 가로 넘침 보정이
        필요없다 — 예전처럼 배율을 깎지 않는다.)
        #land 에 aspect-ratio 를 주면 #stage 보다 높아져 overflow 에 걸리므로 주지 않는다. */
-    #tilt { position: absolute; left: 0; right: 0; top: -31%; bottom: -31%;
-            transform: rotateX(52deg); transform-origin: 50% 50%; }
+    #tilt { position: absolute; left: 0; right: 0; top: -64%; bottom: -64%;
+            transform: rotateX(64deg); transform-origin: 50% 50%; }
 
     /* 바닥면 — #tilt 와 같은 평면에 누워 있다. 여백이 빈 곳이 아니라 공간으로
        보이게 하는 게 목적이라 #tilt 보다 훨씬 크게 뺀다. #stage 가 잘라준다.
