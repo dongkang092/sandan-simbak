@@ -95,6 +95,25 @@
             <filter id="ground-shadow" x="-40%" y="-40%" width="180%" height="180%">
               <feDropShadow dx="0" dy="7" stdDeviation="5"/>
             </filter>
+            <!-- ⚠ 가상 단지 바닥. 건물 바닥면들을 부풀려(dilate) 서로 붙인 뒤
+                 흐리고 문턱을 걸어 단면을 다시 또렷하게 만든다 = 모폴로지 닫기.
+                 결과는 **건물이 실제로 모여 있는 모양**을 감싸는 유기적인 외곽이다.
+                 사각형 깔개는 건물 분포와 모양이 달라 빈 구석이 생기고 서로 겹쳤다.
+                 radius 를 키우면 더 뭉뚱그려지고, 줄이면 건물별로 쪼개진다. -->
+            <filter id="site-blob" x="-15%" y="-15%" width="130%" height="130%">
+              <!-- 크게 부풀려 이웃 건물끼리 붙이고(dilate), 그만큼 다시 깎는다
+                   (erode). 이게 모폴로지 "닫기"다 — 사이의 빈틈은 메워지지만
+                   외곽선은 원래 자리 근처로 돌아온다. dilate 만 크게 하면
+                   단지가 풍선처럼 부푼다. 두 값의 차이(9-5.5≈3.5)가 실제로
+                   건물 밖으로 나오는 여유다. -->
+              <feMorphology operator="dilate" radius="9"/>
+              <feMorphology operator="erode" radius="5.5"/>
+              <feGaussianBlur stdDeviation="2.2"/>
+              <!-- 알파 문턱. 흐린 경계를 다시 자른다 (0.5 기준 계단) -->
+              <feComponentTransfer>
+                <feFuncA type="discrete" tableValues="0 1"/>
+              </feComponentTransfer>
+            </filter>
           </defs>
           <g id="layers"></g>
           <!-- ⚠ 가상 단지 바닥. 건물보다 먼저 그려 깔개가 되게 한다. -->

@@ -41,10 +41,9 @@ const TOP = cssRGB("--land-top");
 const BLDG_TOP = cssRGB("--bldg-top");
 const BLDG_ANCHOR_TOP = cssRGB("--bldg-anchor-top");
 const BLDG_WALL = lerp(cssRGB("--bldg-low"), cssRGB("--bldg-high"), 0.65);
-// 단지 바닥이 건물 밖으로 나오는 여유(px). 위쪽 PAD(viewBox 여유)와 다른 값이다.
-const PAD_OUT = 3.0;
+// 단지 바닥의 부풀림은 #site-blob 필터의 radius 가 정한다 (detail.html).
 const PAD_FILL = cssRGB("--cluster-pad");
-const PAD_ALPHA = 0.5;   // 1 이면 깔개가 땅을 덮어 회색 판처럼 보인다
+const PAD_ALPHA = 0.72;  // 1 이면 깔개가 땅을 덮어 회색 판처럼 보인다
 
 // path 문자열에서 숫자만 순서대로 뽑아 x, y 번갈아 읽는다.
 // frames.json 의 path 는 M/L/Z 절대좌표만 쓴다.
@@ -174,21 +173,16 @@ function circle(g, cx, cy, r, fill) {
   return el;
 }
 
-// ⚠ 가상 단지 바닥. 클러스터에 속한 건물의 bbox + 여유. 건물이 맨땅에 흩어져
-// 있으면 "묶여 있다"가 안 읽힌다 — 깔개가 그 일을 한다.
+// ⚠ 가상 단지 바닥. 건물이 맨땅에 흩어져 있으면 "묶여 있다"가 안 읽힌다 —
+// 깔개가 그 일을 한다. 다만 **모양을 건물 분포에서 얻는다**: 바닥면을 그대로
+// 깔고 #site-blob 필터(dilate + blur + 문턱 = 모폴로지 닫기)로 부풀려 붙인다.
+// bbox 사각형은 분포와 모양이 달라 빈 구석이 남고 클러스터끼리 겹쳤다.
+// 클러스터별로 나누지 않아도 된다 — 멀리 떨어진 무리는 부풀려도 붙지 않는다.
 function renderPads() {
   const g = document.getElementById("pads");
-  const box = {};
-  for (const b of mockBuildings) {
-    const t = box[b.clusterId] ??= { x0: Infinity, y0: Infinity,
-                                     x1: -Infinity, y1: -Infinity };
-    t.x0 = Math.min(t.x0, b.x);
-    t.x1 = Math.max(t.x1, b.x + b.w);
-    // 바닥은 (y-d)~y 구간이다. 높이(h)는 위로 자라므로 바닥에 안 들어간다.
-    t.y0 = Math.min(t.y0, b.y - b.d);
-    t.y1 = Math.max(t.y1, b.y);
-  }
-  // 깔개는 건물 bbox + 여유라서 땅 경계를 물 수 있다. 땅 모양으로 잘라낸다.
+  if (!mockBuildings.length) return;
+
+  // 부풀린 외곽이 땅 경계를 조금 물 수 있다. 땅 모양으로 잘라낸다.
   const clip = document.createElementNS(SVG_NS, "clipPath");
   clip.id = "land-clip";
   const cp = document.createElementNS(SVG_NS, "path");
@@ -197,13 +191,22 @@ function renderPads() {
   svg.querySelector("defs").appendChild(clip);
   g.setAttribute("clip-path", "url(#land-clip)");
 
-  for (const t of Object.values(box)) {
-    const el = rect(g, t.x0 - PAD_OUT, t.y0 - PAD_OUT,
-                    (t.x1 - t.x0) + PAD_OUT * 2, (t.y1 - t.y0) + PAD_OUT * 2,
-                    rgb(PAD_FILL));
-    el.setAttribute("rx", PAD_OUT);
-    el.setAttribute("opacity", PAD_ALPHA);
+  // 필터는 그룹 하나에 건다. 안쪽 도형은 전부 같은 색·불투명 — 필터가 보는 건
+  // 알파뿐이고, 색과 투명도는 그룹에서 정한다.
+  const inner = document.createElementNS(SVG_NS, "g");
+  inner.setAttribute("filter", "url(#site-blob)");
+  inner.setAttribute("fill", rgb(PAD_FILL));
+  for (const b of mockBuildings) {
+    // 바닥면. 상자는 (x, y-d) 에서 w×d, 원통은 지름 w 의 원.
+    if (b.shape === "cyl") {
+      const r = b.w / 2;
+      circle(inner, b.x + r, b.y - r, r, rgb(PAD_FILL));
+    } else {
+      rect(inner, b.x, b.y - b.d, b.w, b.d, rgb(PAD_FILL));
+    }
   }
+  inner.setAttribute("opacity", PAD_ALPHA);
+  g.appendChild(inner);
 }
 
 // ⚠ 가상 건물 렌더링. 축이 정렬돼 있어(rotateZ 없음) 보이는 면은 윗면과 앞면
