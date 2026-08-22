@@ -102,14 +102,14 @@
                  radius 를 키우면 더 뭉뚱그려지고, 줄이면 건물별로 쪼개진다. -->
             <filter id="site-blob" x="-15%" y="-15%" width="130%" height="130%">
               <!-- 크게 부풀려 이웃 건물끼리 붙이고(dilate), 그만큼 다시 깎는다
-                   (erode). 이게 모폴로지 "닫기"다 — 사이의 빈틈은 메워지지만
-                   외곽선은 원래 자리 근처로 돌아온다. dilate 만 크게 하면
-                   단지가 풍선처럼 부푼다. 두 값의 **차이**가 건물 밖으로
-                   나오는 여유(9-7.2≈1.8px)고, dilate 값이 메울 수 있는 빈틈의
-                   크기다. 뚱뚱하면 erode 를 키우고, 건물이 따로 앉으면
-                   dilate 를 키운다 — 둘을 같이 움직이지 않는다. -->
-              <feMorphology operator="dilate" radius="9"/>
-              <feMorphology operator="erode" radius="7.2"/>
+                   (erode). 이게 모폴로지 "닫기"다. 손잡이가 둘인데 역할이 다르다:
+                     · 두 값의 **차이** = 건물 밖으로 나오는 여유 (6-2.5≈3.5px)
+                     · **dilate 값** = 메울 수 있는 빈틈의 크기. 이게 크면 건물
+                       셋이 삼각형으로 서 있을 때 그 **안쪽까지 다 채워져** 답답해진다.
+                   건물 사이 잉여공간을 줄이려면 **두 값을 같이 낮춘다** (차이는
+                   유지). erode 만 키우면 여유가 깎여 건물에 딱 붙어버린다. -->
+              <feMorphology operator="dilate" radius="6"/>
+              <feMorphology operator="erode" radius="2.5"/>
               <feGaussianBlur stdDeviation="2.2"/>
               <!-- 알파 문턱. 흐린 경계를 다시 자른다 (0.5 기준 계단) -->
               <feComponentTransfer>
