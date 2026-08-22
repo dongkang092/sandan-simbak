@@ -2,6 +2,8 @@
 // 지역은 URL 파라미터로만 받는다: detail.html?region=gumi
 // 전력 데이터 / 심박 / 건물은 여기서 다루지 않는다.
 
+import { cssRGB, lerp, rgb } from "./theme.js";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const LAYERS = 22;  // 땅 두께 겹 수. 맨 위층(i=0)이 윗면. 나중에 전력량에 연동한다.
@@ -16,20 +18,10 @@ const ZOOM = 0.82;
 // DEPTH 배수가 아니라 프레임 비율로 잡아야 세로로 긴 화면에서도 두께가 안 잘린다.
 const NEAR_PAD = 0.17;
 
-// 아래층 어둡게 → 위층 밝게. 맨 위층은 윗면 색.
-const SIDE_DARK = [22, 34, 44];
-const SIDE_LIGHT = [58, 84, 100];
-const TOP = [110, 146, 166];
-
-function lerp(a, b, t) {
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * t),
-    Math.round(a[1] + (b[1] - a[1]) * t),
-    Math.round(a[2] + (b[2] - a[2]) * t),
-  ];
-}
-
-const rgb = ([r, g, b]) => `rgb(${r}, ${g}, ${b})`;
+// 아래층 어둡게 → 위층 밝게. 맨 위층은 윗면 색. 색값은 theme.css 에만 있다.
+const SIDE_DARK = cssRGB("--land-side");
+const SIDE_LIGHT = cssRGB("--land-side-lit");
+const TOP = cssRGB("--land-top");
 
 // path 문자열에서 숫자만 순서대로 뽑아 x, y 번갈아 읽는다.
 // frames.json 의 path 는 M/L/Z 절대좌표만 쓴다.

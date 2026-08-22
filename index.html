@@ -4,21 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>산단 심박</title>
+  <!-- 색은 전부 theme.css 의 :root 변수. 여기에 색값을 직접 쓰지 않는다. -->
+  <link rel="stylesheet" href="./src/theme.css">
   <style>
-    body { margin: 0; font-family: sans-serif; background: #111; color: #eee; }
+    body { margin: 0; font-family: sans-serif;
+           background: var(--ground); color: var(--ink); }
     #wrap { max-width: 900px; margin: 0 auto; padding: 16px; }
     /* 렌더링 주의: doctype + aspect-ratio 없으면 SVG 가 0x0 이 된다 */
     #map-box { position: relative; }
-    #map { width: 100%; aspect-ratio: 900 / 700; display: block; background: #1a1a1a; }
-    .region { stroke: #000; stroke-width: 0.6; cursor: pointer; pointer-events: all; }
+    #map { width: 100%; aspect-ratio: 900 / 700; display: block;
+           background: var(--surface); }
+    .region { stroke: var(--line); stroke-width: 0.6; cursor: pointer; pointer-events: all; }
     /* 호버 윤곽은 맨 위에 별도 path 로 덧그린다. fill 은 rate 를 나타내므로 손대지 않는다.
        지역 path 에 :hover 를 걸면 나중에 그려진 이웃 지역이 stroke 을 덮는다. */
-    #hover-outline { fill: none; stroke: #fff; stroke-width: 1.6; pointer-events: none; }
-    .no-data { fill: #555; }
+    #hover-outline { fill: none; stroke: var(--hover); stroke-width: 1.6; pointer-events: none; }
+    .no-data { fill: var(--no-data); }
     /* 호버한 지역 이름 — 지도 우상단 */
     #hover-name { position: absolute; top: 8px; right: 10px; font-size: 13px;
-                  color: #ccc; pointer-events: none; }
-    #inset-box { fill: none; stroke: #888; stroke-width: 1; stroke-dasharray: 4 3; }
+                  color: var(--ink-dim); pointer-events: none; }
+    #inset-box { fill: none; stroke: var(--line-soft); stroke-width: 1; stroke-dasharray: 4 3; }
     #controls { margin-top: 12px; }
     #month { font-size: 20px; font-variant-numeric: tabular-nums; }
     #slider { width: 100%; }

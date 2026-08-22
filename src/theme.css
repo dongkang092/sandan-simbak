@@ -1,0 +1,39 @@
+/* 팔레트 한 곳. index.html / detail.html 이 공유한다.
+   순무채색 검정을 쓰지 않는다 — 전부 210° 근처 청색이 도는 잉크 계열이라
+   "금융 터미널"이 아니라 "관측 장비 / 도면"으로 읽힌다.
+   색값은 여기에만 쓴다. JS 는 src/theme.js 의 cssRGB() 로 읽어간다. */
+:root {
+  /* 배경 층 — 깊을수록 어둡다 */
+  --ground:     #131A21;  /* index 페이지 바닥 */
+  --surface:    #1A232C;  /* 지도 판 */
+  --sunken:     #0D1319;  /* detail 페이지 바닥 (가장 깊음) */
+  --floor:      #0F161D;  /* 2.5D 바닥면 */
+  --floor-line: #18212B;  /* 바닥 격자선 */
+
+  /* 선 */
+  --line:      #0E141A;  /* 지역 경계 */
+  --line-soft: #7E8B98;  /* inset 점선 박스 */
+
+  /* 글자 — 순백(#fff) 쓰지 않는다 */
+  --ink:       #D3DAE1;
+  --ink-dim:   #9AA6B2;
+  --ink-faint: #6C7A88;
+  --accent:    #7FA0BA;  /* 링크 */
+  --alert:     #BC8B62;  /* 오류 메시지 */
+  --hover:     #DCE4EC;  /* 호버 윤곽 */
+
+  /* 땅 (2.5D) */
+  --land-top:      #6E92A6;  /* 윗면 — 청회색 */
+  --land-side:     #16222C;  /* 두께 맨 아래층 */
+  --land-side-lit: #3A5464;  /* 두께 맨 위층 */
+  --shadow:        #05080B;
+
+  /* rate 발산형 매핑. main.js 가 이 세 값 사이를 RGB 선형 보간한다.
+     rate<=0.70 → --decline, rate=1.0 → --neutral, rate>=1.30 → --growth.
+     채도를 낮게 유지한다. 선명해지면 지도가 신호등처럼 보인다. */
+  --decline: #A85E43;
+  --neutral: #414A54;
+  --growth:  #4C7B99;
+
+  --no-data: #3B444E;  /* hasData=false */
+}

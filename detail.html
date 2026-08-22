@@ -4,16 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>산단 심박 — 상세</title>
+  <!-- 색은 전부 theme.css 의 :root 변수. 여기에 색값을 직접 쓰지 않는다. -->
+  <link rel="stylesheet" href="./src/theme.css">
   <style>
     html, body { height: 100%; }
-    body { margin: 0; font-family: sans-serif; background: #08090c; color: #eee;
+    body { margin: 0; font-family: sans-serif;
+           background: var(--sunken); color: var(--ink);
            overflow: hidden; }
 
     #hud { position: fixed; top: 22px; left: 26px; z-index: 10; }
     #region-name { font-size: 32px; font-weight: 600; margin: 0; letter-spacing: -0.02em; }
     /* 나중에 업종·수치가 들어갈 자리 */
-    #region-stat { font-size: 13px; color: #6f7c8a; margin: 6px 0 12px; }
-    #back { color: #8ab; font-size: 14px; text-decoration: none; }
+    #region-stat { font-size: 13px; color: var(--ink-faint); margin: 6px 0 12px; }
+    #back { color: var(--accent); font-size: 14px; text-decoration: none; }
     #back:hover { text-decoration: underline; }
 
     #wrap { position: relative; width: 100%; height: 100%; }
@@ -37,16 +40,20 @@
        땅보다 훨씬 낮은 명도. 먼 쪽(위) 끝은 mask 로 흐려 지평선을 감춘다. */
     #floor { position: absolute; left: -150%; right: -150%; top: -150%; bottom: -150%;
              background:
-               repeating-linear-gradient(to right,  #141922 0 1px, transparent 1px 72px),
-               repeating-linear-gradient(to bottom, #141922 0 1px, transparent 1px 72px),
-               #0c0e13;
+               repeating-linear-gradient(to right,  var(--floor-line) 0 1px, transparent 1px 72px),
+               repeating-linear-gradient(to bottom, var(--floor-line) 0 1px, transparent 1px 72px),
+               var(--floor);
+             /* mask 의 #000 은 팔레트 색이 아니라 알파 스톱(불투명)이다. 변수로 빼지 않는다. */
              -webkit-mask-image: linear-gradient(to bottom, transparent 30%, #000 46%);
              mask-image: linear-gradient(to bottom, transparent 30%, #000 46%); }
 
     /* SVG 기본 overflow:hidden 을 그대로 둔다 → 외곽선이 viewBox 를 넘으면 잘린다 (의도) */
     #land { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 
-    #err { position: fixed; bottom: 16px; left: 26px; color: #c96; font-size: 13px;
+    /* flood-color 는 SVG 속성으로는 var() 를 못 받는다 → CSS 로 건다 */
+    #ground-shadow feDropShadow { flood-color: var(--shadow); flood-opacity: 0.85; }
+
+    #err { position: fixed; bottom: 16px; left: 26px; color: var(--alert); font-size: 13px;
            margin: 0; }
   </style>
 </head>
@@ -65,8 +72,7 @@
             <!-- 맨 아래층에만 걸어서 땅이 바닥에 놓인 느낌을 만든다.
                  필터 영역을 넉넉히 잡아야 그림자가 bbox 에서 잘리지 않는다. -->
             <filter id="ground-shadow" x="-40%" y="-40%" width="180%" height="180%">
-              <feDropShadow dx="0" dy="7" stdDeviation="5"
-                            flood-color="#000" flood-opacity="0.85"/>
+              <feDropShadow dx="0" dy="7" stdDeviation="5"/>
             </filter>
           </defs>
           <g id="layers"></g>
