@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>산단 심박</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #111; color: #eee; }
+    #wrap { max-width: 900px; margin: 0 auto; padding: 16px; }
+    /* 렌더링 주의: doctype + aspect-ratio 없으면 SVG 가 0x0 이 된다 */
+    #map { width: 100%; aspect-ratio: 900 / 700; display: block; background: #1a1a1a; }
+    .region { stroke: #000; stroke-width: 0.6; }
+    .no-data { fill: #555; }
+    #inset-box { fill: none; stroke: #888; stroke-width: 1; stroke-dasharray: 4 3; }
+    #controls { margin-top: 12px; }
+    #month { font-size: 20px; font-variant-numeric: tabular-nums; }
+    #slider { width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <svg id="map" viewBox="0 0 900 700" xmlns="http://www.w3.org/2000/svg">
+      <g id="regions"></g>
+    </svg>
+    <div id="controls">
+      <div id="month">----–--</div>
+      <input id="slider" type="range" min="0" max="0" value="0" step="1">
+    </div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
