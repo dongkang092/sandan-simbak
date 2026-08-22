@@ -3,11 +3,25 @@
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// rate → 색. rate<1 파랑(감소), rate>1 빨강(증가). 색은 대충 (스타일은 나중).
+// rate → 색. rate=1.0 중심 발산형(diverging). 레인보우 아님.
+// rate<1(쇠퇴)=경고색(주황~빨강), rate=1=중립(어두운 회색), rate>1(성장)=차분한 청록~파랑.
+// 두 색 사이 RGB 선형 보간 (hue 회전 아님).
+const NEUTRAL = [74, 74, 82];    // rate = 1.0
+const DECLINE = [201, 66, 36];   // rate <= 0.70 (경고)
+const GROWTH  = [44, 116, 168];  // rate >= 1.30 (성장)
+
+function lerp(a, b, t) {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
+}
+
 function rateToFill(rate) {
-  const t = Math.max(0, Math.min(1, (rate - 0.65) / (1.17 - 0.65))); // 0..1
-  const hue = (1 - t) * 220; // 220(파랑) → 0(빨강)
-  return `hsl(${hue}, 70%, 50%)`;
+  const t = Math.max(-1, Math.min(1, (rate - 1.0) / 0.30)); // 0.70~1.30 대칭 클램프
+  const [r, g, b] = t < 0 ? lerp(NEUTRAL, DECLINE, -t) : lerp(NEUTRAL, GROWTH, t);
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 const res = await fetch("./data/processed/frames.json");
