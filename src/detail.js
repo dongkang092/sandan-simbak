@@ -4,12 +4,20 @@
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const LAYERS = 8;   // 땅 두께 겹 수. 맨 위층(i=0)이 윗면.
+const LAYERS = 22;  // 땅 두께 겹 수. 맨 위층(i=0)이 윗면. 나중에 전력량에 연동한다.
 const STEP = 2;     // 겹 간격 (SVG 유저 단위, y 축으로 아래로)
 const DEPTH = (LAYERS - 1) * STEP;
 
+// viewBox 를 (땅 + 두께) 보다 좁게 잡아 지역이 프레임을 넘치게 한다.
+// 1 보다 작을수록 확대. 외곽선이 잘려나가는 건 의도다.
+const ZOOM = 0.82;
+// 프레임 아래쪽에 남기는 여유 (vbH 비율). perspective 가 가까운(아래) 쪽을 확대해서
+// 평면의 아래 약 11% 는 #stage 밖으로 밀려난다 — 그 값이 평면 높이에 비례하므로
+// DEPTH 배수가 아니라 프레임 비율로 잡아야 세로로 긴 화면에서도 두께가 안 잘린다.
+const NEAR_PAD = 0.17;
+
 // 아래층 어둡게 → 위층 밝게. 맨 위층은 윗면 색.
-const SIDE_DARK = [26, 40, 50];
+const SIDE_DARK = [22, 34, 44];
 const SIDE_LIGHT = [58, 84, 100];
 const TOP = [110, 146, 166];
 
@@ -57,22 +65,38 @@ if (!region) {
 nameEl.textContent = region.name;
 document.title = `${region.name} — 산단 심박`;
 
-// 그 지역만 화면에 꽉 차게: 해당 path 의 bbox + 여유로 viewBox 를 맞춘다.
 const { minX, minY, maxX, maxY } = pathBBox(region.path);
 const bw = maxX - minX;
-const bh = maxY - minY;
-const pad = Math.max(bw, bh) * 0.06;
-
-const vbX = minX - pad;
-const vbY = minY - pad;
-const vbW = bw + pad * 2;
-const vbH = bh + pad * 2 + DEPTH; // 아래로 쌓이는 두께만큼 더 확보
+// 땅 윗면 아래로 두께가 쌓인다. 이게 실제 도형의 맨 아랫단.
+const contentBot = maxY + DEPTH;
+const contentH = contentBot - minY;
 
 const svg = document.getElementById("land");
-svg.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
-svg.style.aspectRatio = `${vbW} / ${vbH}`; // 0x0 방지 + 비율 유지
+const tilt = document.getElementById("tilt");
 
-// 같은 path 를 8겹 복제. 깊은 층부터 붙여 맨 위층이 마지막에 그려지게 한다.
+// #land 는 #tilt 를 그대로 채운다. aspect-ratio 를 주면 #stage 보다 높아져
+// overflow 에 걸리므로 JS 에서도 건드리지 않는다 — 액자는 viewBox 로만 잡는다.
+function layout() {
+  // getBoundingClientRect 는 rotateX 가 적용된 투영 사각형을 준다 (aspect 가 2.6배 부풀어
+  // viewBox 가 통째로 줌아웃됐다). 레이아웃 박스를 봐야 한다 → clientWidth/Height.
+  const cw = tilt.clientWidth, ch = tilt.clientHeight;
+  if (!cw || !ch) return;
+
+  // #tilt 가 foreshortening 만큼 미리 늘어나 있으므로, 여기서 (땅 + 두께) 기준으로
+  // 프레임을 잡으면 preserveAspectRatio 의 meet 이 화면 기준으로 맞아떨어진다.
+  let vbW = bw * ZOOM;
+  let vbH = (contentH / (1 - NEAR_PAD)) * ZOOM;
+  // 프레임이 평면보다 납작하면 meet 이 가로를 기준으로 맞춘다 → 세로를 평면 비율까지 늘린다.
+  if (vbW / vbH > cw / ch) vbH = vbW * ch / cw;
+
+  // 가로는 cx 중심. 세로는 가까운 쪽(아래) 끝에 NEAR_PAD 만큼 여유를 두고 아래 정렬하고,
+  // 먼 쪽(위)을 잘라낸다 — 두께가 안 보이면 의미가 없고, 위쪽이 잘리는 건 땅이
+  // 화면 밖으로 이어지는 것으로 읽힌다.
+  svg.setAttribute("viewBox",
+    `${region.cx - vbW / 2} ${contentBot - vbH * (1 - NEAR_PAD)} ${vbW} ${vbH}`);
+}
+
+// 같은 path 를 LAYERS 겹 복제. 깊은 층부터 붙여 맨 위층이 마지막에 그려지게 한다.
 const layers = document.getElementById("layers");
 for (let i = LAYERS - 1; i >= 0; i--) {
   const p = document.createElementNS(SVG_NS, "path");
@@ -86,6 +110,10 @@ for (let i = LAYERS - 1; i >= 0; i--) {
     // i 가 클수록 아래층 → 어둡게
     const t = (LAYERS - 1 - i) / (LAYERS - 2);
     p.setAttribute("fill", rgb(lerp(SIDE_DARK, SIDE_LIGHT, t)));
+    if (i === LAYERS - 1) p.setAttribute("filter", "url(#ground-shadow)");
   }
   layers.appendChild(p);
 }
+
+layout();
+new ResizeObserver(layout).observe(tilt);
