@@ -36,22 +36,32 @@ function recede(c) {
   return lerp(lerp(c, [y, y, y], DESAT), SURFACE, SINK);
 }
 
-// health → 색. 0~1 단조 스케일 (낮을수록 위기). rate 색 함수와 공유하지 않는다.
-// CRIT/OK 는 위기 판정 문턱이 아니라 **색 스케일의 양 끝**이다 — 이 밖은 색이
-// 포화된다. health 를 계산하지 않고 받은 값을 색에 대응시키기만 한다.
+// health → 화면 상태. 0~1 단조 스케일 (낮을수록 위기).
+// CRIT_AT/OK_AT 는 위기 판정 문턱이 아니라 **스케일의 양 끝**이다 — 이 밖은 값이
+// 포화된다. health 를 계산하지 않고 받은 값을 색·후광 세기에 대응시키기만 한다.
+// 색은 전부 적색 계열이고 밝기만 변한다 (theme.css 참고). 위기일수록 뜨겁게
+// 밝아지고 후광이 세진다 — 두 채널이 같은 방향이라 작은 점으로도 읽힌다.
 const H_CRIT = cssRGB("--health-crit");
 const H_MID = cssRGB("--health-mid");
 const H_OK = cssRGB("--health-ok");
 const CRIT_AT = 0.30, OK_AT = 0.85;
 
-function healthToFill(health) {
-  const t = Math.max(0, Math.min(1, (health - CRIT_AT) / (OK_AT - CRIT_AT)));
+// health → 0(위기) ~ 1(차분)
+function norm(health) {
+  return Math.max(0, Math.min(1, (health - CRIT_AT) / (OK_AT - CRIT_AT)));
+}
+
+function healthToFill(t) {
   return rgb(t < 0.5 ? lerp(H_CRIT, H_MID, t / 0.5)
                      : lerp(H_MID, H_OK, (t - 0.5) / 0.5));
 }
 
 // 점 크기: 면적이 members 에 비례하도록 반지름은 sqrt. 900x700 좌표계 기준.
-const R_K = 1.35, R_MIN = 2.2, R_MAX = 9.0;
+// 작게 유지한다 — 점이 커지면 발광이 아니라 원반으로 보이고, 여러 개가
+// 규칙적으로 깔리면 지도가 아니라 무늬가 된다.
+const R_K = 0.55, R_MIN = 1.2, R_MAX = 3.2;
+const GLOW_R = 3.4;                  // 후광 반지름 = 알맹이의 이 배수
+const GLOW_LO = 0.16, GLOW_HI = 0.62;  // 후광 불투명도: 차분 → 위기
 
 function radius(members) {
   return Math.max(R_MIN, Math.min(R_MAX, R_K * Math.sqrt(members || 1)));
@@ -123,16 +133,22 @@ gRegions.appendChild(hoverOutline);
 
 // ⚠ 가상 클러스터 점. months 축이 frames.json 과 다르면 슬라이더 인덱스가
 // 어긋나므로 그리지 않는다 — 계약(frames 길이 = months 길이)이 깨진 경우다.
-const dots = []; // { el, cluster }
+// 점 하나 = 후광(흐림) + 알맹이. 좌표·크기는 고정이고 매 월 색과 후광 세기만 바뀐다.
+const dots = []; // { glow, core, cluster }
 if (mock && mock.months?.length === months.length) {
   for (const cluster of Object.values(mock.clusters)) {
-    const c = document.createElementNS(SVG_NS, "circle");
-    c.classList.add("cluster");
-    c.setAttribute("cx", cluster.cx);
-    c.setAttribute("cy", cluster.cy);
-    c.setAttribute("r", radius(cluster.members));
-    gClusters.appendChild(c);
-    dots.push({ el: c, cluster });
+    const r = radius(cluster.members);
+    const glow = document.createElementNS(SVG_NS, "circle");
+    glow.classList.add("glow");
+    glow.setAttribute("cx", cluster.cx);
+    glow.setAttribute("cy", cluster.cy);
+    glow.setAttribute("r", r * GLOW_R);
+    const core = document.createElementNS(SVG_NS, "circle");
+    core.setAttribute("cx", cluster.cx);
+    core.setAttribute("cy", cluster.cy);
+    core.setAttribute("r", r);
+    gClusters.append(glow, core);
+    dots.push({ glow, core, cluster });
   }
 }
 if (dots.length) {
@@ -149,8 +165,12 @@ function render(i) {
     el.setAttribute("fill", rgb(recede(rateToRGB(region.frames[i].rate))));
   }
   // 계약: health 외의 값으로 시각적 상태를 정하지 않는다.
-  for (const { el, cluster } of dots) {
-    el.setAttribute("fill", healthToFill(cluster.frames[i].health));
+  for (const { glow, core, cluster } of dots) {
+    const t = norm(cluster.frames[i].health);
+    const fill = healthToFill(t);
+    core.setAttribute("fill", fill);
+    glow.setAttribute("fill", fill);
+    glow.setAttribute("opacity", (GLOW_LO + (GLOW_HI - GLOW_LO) * (1 - t)).toFixed(3));
   }
 }
 

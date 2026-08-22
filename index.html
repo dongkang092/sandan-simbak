@@ -19,9 +19,12 @@
        지역 path 에 :hover 를 걸면 나중에 그려진 이웃 지역이 stroke 을 덮는다. */
     #hover-outline { fill: none; stroke: var(--hover); stroke-width: 1.6; pointer-events: none; }
     .no-data { fill: var(--no-data); }
-    /* 클러스터 점 = 주인공. fill 은 health 에 따라 main.js 가 정한다.
+    /* 클러스터 점 = 주인공. 점 하나 = 흐린 후광 + 작은 알맹이 두 겹이다.
+       색과 후광 세기는 health 에 따라 main.js 가 정한다.
+       윤곽선을 주지 않는다 — 검은 테를 두르면 발광이 아니라 스티커로 보인다.
        pointer-events 를 끊어야 점 위에서도 아래 지역의 호버·클릭이 그대로 산다. */
-    .cluster { stroke: var(--cluster-edge); stroke-width: 0.7; pointer-events: none; }
+    #clusters { pointer-events: none; }
+    .glow { filter: url(#dot-glow); }
     /* 호버한 지역 이름 — 지도 우상단 */
     #hover-name { position: absolute; top: 8px; right: 10px; font-size: 13px;
                   color: var(--ink-dim); pointer-events: none; }
@@ -41,13 +44,20 @@
   <div id="wrap">
     <div id="map-box">
       <svg id="map" viewBox="0 0 900 700" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- 후광. stdDeviation 은 900 폭 좌표계 단위 (화면 900px 에서 약 2px).
+               필터 영역을 넉넉히 잡아야 번짐이 원 bbox 에서 잘리지 않는다. -->
+          <filter id="dot-glow" x="-120%" y="-120%" width="340%" height="340%">
+            <feGaussianBlur stdDeviation="2.1"/>
+          </filter>
+        </defs>
         <g id="regions"></g>
         <!-- ⚠ 가상 클러스터 (clusters.mock.json). 지역 뒤에 붙어 위에 그려진다. -->
         <g id="clusters"></g>
       </svg>
       <!-- ⚠ 클러스터 위기도와 건물 배치는 둘 다 가상 데이터다.
            실데이터로 교체하면 이 배지를 지운다. -->
-      <div id="mock-badge" hidden>클러스터·건물 = 가상 데이터</div>
+      <div id="mock-badge" hidden>클러스터·건물 = 가상 데이터 (안동시만)</div>
       <div id="hover-name"></div>
     </div>
     <div id="controls">

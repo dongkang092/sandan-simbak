@@ -122,6 +122,7 @@ SVG 좌표계는 **900 × 700 고정**. 반응형은 `viewBox`로 처리한다.
 | `frames.json` 의 `rate`/`size`/`irr` | **난수.** 한전 실데이터 미확보 |
 | `buildings.mock.json` | **가상 데이터.** 팩토리온 실데이터 확보 후 삭제 |
 | `clusters.mock.json` 의 `health` | **난수.** 완만한 하락 + 계절성 + 일부 급락 |
+| 가상 데이터의 범위 | **안동시 하나뿐.** 건물 110채 / 클러스터 6개 |
 | `clusters.json` | **아직 없음.** 팀메이트 산출물 대기 |
 
 `data/processed/buildings.mock.json` 은 가상 데이터다.
@@ -134,6 +135,11 @@ SVG 좌표계는 **900 × 700 고정**. 반응형은 `viewBox`로 처리한다.
 (생성: `scripts/build_mock_clusters.py` ← `buildings.mock.json` 의 `clusters`,
 렌더링: `src/main.js` 의 `healthToFill()` / `#clusters`,
 배지: `index.html` 의 `#mock-badge`)
+
+가상 데이터는 **안동시에만** 만든다 (`build_mock_buildings.py` 의 `MOCK_REGIONS`).
+22개 시군구 전부에 깔면 파일이 열 배 이상 커지고 전체 지도가 점으로 뒤덮여,
+느낌을 보는 목적에도 방해가 된다. 다른 지역의 detail 화면은 땅만 나오고
+배지도 뜨지 않는다 — 정상이다.
 
 건물 무리 = 클러스터다. `build_mock_buildings.py` 가 격자로 뭉쳐 놓은 무리를
 `clusters` 로 요약해(무게중심·개수·바닥면적) 같은 파일에 넣고, 각 건물은

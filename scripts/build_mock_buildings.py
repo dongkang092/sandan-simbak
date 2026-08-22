@@ -13,6 +13,10 @@
 그대로 적어 준다. scripts/build_mock_clusters.py 가 이 좌표를 읽어
 clusters.mock.json (위기도 시계열) 을 만든다.
 
+가상 데이터는 **MOCK_REGIONS 의 지역에만** 만든다 (지금은 안동시 하나). 22개 시군구
+전부에 깔면 파일이 커지고 지도가 점으로 뒤덮여, 느낌을 보는 목적에도 오히려 방해가
+된다. 실데이터가 오면 이 스크립트 자체가 사라지므로 범위를 넓힐 이유도 없다.
+
 건물 수는 지역 면적에만 비례한다. "구미가 더 산업적이다" 같은 의미를
 넣지 않는다 — 가상 데이터가 실제 통계처럼 읽히면 안 된다.
 
@@ -34,6 +38,10 @@ WARNING = (
     "가상 데이터. 실제 공장 위치도, 실제 산업단지 경계도 아니다. "
     "팩토리온 실데이터로 교체 후 이 파일을 삭제할 것."
 )
+
+# 가상 데이터를 만들 지역. frames.json 의 regions 키. 여기 없는 지역은
+# 건물도 클러스터도 없다 — 전체 지도에서 점이 안동시에만 찍힌다.
+MOCK_REGIONS = ("andong",)
 
 # 잘라내기(out[:target]) 후 이만큼도 남지 않은 무리는 클러스터로 보지 않는다.
 # 건물 한두 채에 점을 찍으면 지도에서 산업단지가 아니라 먼지로 읽힌다.
@@ -320,7 +328,8 @@ def main():
 
     buildings = {}
     clusters = {}
-    for key, region in data["regions"].items():
+    for key in MOCK_REGIONS:
+        region = data["regions"][key]
         ring = parse_ring(region["path"])
         placed, sp = build_region(ring, rng, key)
         found = collect_clusters(key, placed, sp)
