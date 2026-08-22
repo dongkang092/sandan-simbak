@@ -121,11 +121,23 @@ SVG 좌표계는 **900 × 700 고정**. 반응형은 `viewBox`로 처리한다.
 |---|---|
 | `frames.json` 의 `rate`/`size`/`irr` | **난수.** 한전 실데이터 미확보 |
 | `buildings.mock.json` | **가상 데이터.** 팩토리온 실데이터 확보 후 삭제 |
+| `clusters.mock.json` 의 `health` | **난수.** 완만한 하락 + 계절성 + 일부 급락 |
 | `clusters.json` | **아직 없음.** 팀메이트 산출물 대기 |
 
 `data/processed/buildings.mock.json` 은 가상 데이터다.
 팩토리온 실데이터 확보 후 삭제할 것. (생성: `scripts/build_mock_buildings.py`,
 렌더링: `src/detail.js` 의 `renderBuildings()`, 배지: `#mock-badge`)
+
+`data/processed/clusters.mock.json` 도 가상 데이터다. 계약(위 `clusters.json`)은
+그대로 지키고 `health` 만 난수로 채운 임시 파일이다 — **산출식과 무관하다.**
+팀메이트의 `clusters.json` 이 오면 스크립트와 함께 삭제한다.
+(생성: `scripts/build_mock_clusters.py` ← `buildings.mock.json` 의 `clusters`,
+렌더링: `src/main.js` 의 `healthToFill()` / `#clusters`,
+배지: `index.html` 의 `#mock-badge`)
+
+건물 무리 = 클러스터다. `build_mock_buildings.py` 가 격자로 뭉쳐 놓은 무리를
+`clusters` 로 요약해(무게중심·개수·바닥면적) 같은 파일에 넣고, 각 건물은
+`clusterId` 를 들고 있다. 두 파일의 클러스터 좌표는 같은 자리를 가리킨다.
 
 ## 데이터 출처
 

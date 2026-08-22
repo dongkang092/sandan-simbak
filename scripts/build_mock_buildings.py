@@ -8,6 +8,11 @@
 입력  : data/processed/frames.json  (path 가 이미 900x700 픽셀 좌표계다)
 출력  : data/processed/buildings.mock.json
 
+출력에는 건물 목록과 함께 **클러스터 요약**(clusters)이 들어간다. 건물을 격자로
+뭉쳐 놓는 단위가 이미 클러스터이므로, 그 무리의 무게중심·개수·바닥면적을
+그대로 적어 준다. scripts/build_mock_clusters.py 가 이 좌표를 읽어
+clusters.mock.json (위기도 시계열) 을 만든다.
+
 건물 수는 지역 면적에만 비례한다. "구미가 더 산업적이다" 같은 의미를
 넣지 않는다 — 가상 데이터가 실제 통계처럼 읽히면 안 된다.
 
@@ -26,9 +31,18 @@ SRC = ROOT / "data" / "processed" / "frames.json"
 OUT = ROOT / "data" / "processed" / "buildings.mock.json"
 
 WARNING = (
-    "가상 데이터. 실제 공장 위치가 아니다. "
+    "가상 데이터. 실제 공장 위치도, 실제 산업단지 경계도 아니다. "
     "팩토리온 실데이터로 교체 후 이 파일을 삭제할 것."
 )
+
+# 잘라내기(out[:target]) 후 이만큼도 남지 않은 무리는 클러스터로 보지 않는다.
+# 건물 한두 채에 점을 찍으면 지도에서 산업단지가 아니라 먼지로 읽힌다.
+MIN_MEMBERS = 3
+
+# 무게중심이 sp(격자 간격) 의 이 배수 안에 있는 무리는 한 클러스터로 합친다.
+# 배치는 중심을 여러 번 다시 뽑기 때문에(build_region) 같은 자리에 두세 무리가
+# 겹쳐 앉는다 — 합치지 않으면 전체 지도에서 점 두세 개가 한 점처럼 포개진다.
+MERGE_SP = 2.0
 
 # 면적(px²) 당 건물 1개. 1px ≈ 278m 이므로 1px² ≈ 0.077km².
 DENSITY = 180.0
@@ -147,9 +161,10 @@ def kind_mix(want, rng):
     return kinds[:want]
 
 
-def cluster(ring, center, want, sp, rng, placed):
+def cluster(ring, center, want, sp, rng, placed, cid):
     """클러스터 하나. 격자 + jitter 로 산업단지처럼 뭉쳐 배치한다.
-    placed 에 통과한 건물을 직접 넣는다."""
+    placed 에 통과한 건물을 직접 넣는다. cid 는 임시 id — 배치가 끝난 뒤
+    collect_clusters() 에서 최종 id(gumi-1 …) 로 다시 붙인다."""
     cx, cy = center
     kinds = kind_mix(want, rng)
     # 칸을 개수보다 넉넉히 잡아 격자를 다 채우지 않는다 — 꽉 채우면
@@ -179,6 +194,7 @@ def cluster(ring, center, want, sp, rng, placed):
             "x": round(gx - w / 2, 1), "y": round(gy + d / 2, 1),
             "w": round(w, 2), "d": round(d, 2),
             "h": round(h, 2),
+            "clusterId": cid,
         }
         b["_kind"] = kind   # 통계용. 출력 직전에 지운다.
         if not fits(b["x"], b["y"], b["w"], b["d"], ring):
@@ -190,13 +206,14 @@ def cluster(ring, center, want, sp, rng, placed):
     return made
 
 
-def build_region(ring, rng):
+def build_region(ring, rng, key):
     area = area_of(ring)
     target = max(MIN_N, min(MAX_N, round(area / DENSITY)))
     sp = max(SP_MIN, min(SP_MAX, math.sqrt(area) / SP_DIV))
     n_clusters = max(2, min(4, 2 + target // 40))
 
     out = []
+    seq = 0
     # 클러스터 중심이 좁은 자락에 걸리면 격자가 거의 다 밖으로 나간다 →
     # 목표 개수에 못 미치면 중심을 다시 뽑아 몇 번 더 시도한다.
     for attempt in range(n_clusters * 6):
@@ -206,8 +223,65 @@ def build_region(ring, rng):
         if c is None:
             break
         want = max(3, round(target / n_clusters))
-        cluster(ring, c, want, sp, rng, out)
-    return out[:target]
+        seq += 1
+        cluster(ring, c, want, sp, rng, out, f"{key}#{seq}")
+    return out[:target], sp
+
+
+def merge_near(groups, dist):
+    """무게중심이 dist 안에 있는 무리를 단일 연결(single-linkage)로 합친다.
+    무리 수가 지역당 열 몇 개라 O(n²) 반복으로 충분하다."""
+    def cen(g):
+        return (sum(b["x"] + b["w"] / 2 for b in g) / len(g),
+                sum(b["y"] - b["d"] / 2 for b in g) / len(g))
+
+    groups = [list(g) for g in groups]
+    merged = True
+    while merged:
+        merged = False
+        cs = [cen(g) for g in groups]
+        for i in range(len(groups)):
+            for j in range(i + 1, len(groups)):
+                if math.dist(cs[i], cs[j]) < dist:
+                    groups[i] += groups[j]
+                    del groups[j]
+                    merged = True
+                    break
+            if merged:
+                break
+    return groups
+
+
+def collect_clusters(key, buildings, sp):
+    """클러스터 요약 + 최종 id. 씨앗 중심이 아니라 **살아남은 건물의 무게중심**을
+    쓴다 — 경계·겹침 판정과 잘라내기로 배치가 한쪽으로 치우치므로, 전체 지도의
+    점이 건물 무리와 같은 자리에 찍히려면 결과를 보고 정해야 한다.
+
+    MIN_MEMBERS 미달 무리는 버린다. 그 건물들은 임시 id 를 그대로 들고 있으므로
+    호출한 쪽에서 걸러낸다 (반환된 dict 에 없는 clusterId).
+    """
+    groups = {}
+    for b in buildings:
+        groups.setdefault(b["clusterId"], []).append(b)
+
+    keep = merge_near(groups.values(), sp * MERGE_SP)
+    keep = [g for g in keep if len(g) >= MIN_MEMBERS]
+    keep.sort(key=lambda g: -len(g))
+
+    out = {}
+    for n, g in enumerate(keep, start=1):
+        cid = f"{key}-{n}"
+        for b in g:
+            b["clusterId"] = cid
+        # 건물 바닥 중심의 평균. y 는 아래로 증가하고 바닥은 (y-d)~y 구간이다.
+        out[cid] = {
+            "region": key,
+            "cx": round(sum(b["x"] + b["w"] / 2 for b in g) / len(g), 1),
+            "cy": round(sum(b["y"] - b["d"] / 2 for b in g) / len(g), 1),
+            "count": len(g),
+            "area": round(sum(b["w"] * b["d"] for b in g), 1),
+        }
+    return out
 
 
 def report(buildings):
@@ -245,9 +319,15 @@ def main():
     rng = random.Random(args.seed)
 
     buildings = {}
+    clusters = {}
     for key, region in data["regions"].items():
         ring = parse_ring(region["path"])
-        buildings[key] = build_region(ring, rng)
+        placed, sp = build_region(ring, rng, key)
+        found = collect_clusters(key, placed, sp)
+        clusters.update(found)
+        # 클러스터에 못 든 낙오 건물은 버린다 — 소속 없는 clusterId 가 남으면
+        # clusters.mock.json 과 짝이 맞지 않는다.
+        buildings[key] = [b for b in placed if b["clusterId"] in found]
 
     if args.stats:
         report(buildings)
@@ -258,15 +338,18 @@ def main():
             b.pop("_kind", None)
 
     OUT.write_text(
-        json.dumps({"_WARNING": WARNING, "buildings": buildings},
+        json.dumps({"_WARNING": WARNING, "clusters": clusters,
+                    "buildings": buildings},
                    ensure_ascii=False, separators=(",", ":")) + "\n",
         encoding="utf-8")
 
     total = sum(len(v) for v in buildings.values())
     print(f"{OUT.relative_to(ROOT)}  ⚠ 가상 데이터")
-    print(f"  지역 {len(buildings)}개 / 건물 {total}개 / seed {args.seed}")
+    print(f"  지역 {len(buildings)}개 / 건물 {total}개 / "
+          f"클러스터 {len(clusters)}개 / seed {args.seed}")
     for key, v in sorted(buildings.items(), key=lambda kv: -len(kv[1])):
-        print(f"    {key:11s} {len(v):4d}")
+        n = sum(1 for c in clusters.values() if c["region"] == key)
+        print(f"    {key:11s} 건물 {len(v):4d}  클러스터 {n}")
 
 
 if __name__ == "__main__":

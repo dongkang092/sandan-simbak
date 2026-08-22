@@ -42,4 +42,15 @@
   --growth:  #4C7B99;
 
   --no-data: #3B444E;  /* hasData=false */
+
+  /* 클러스터 위기도(health) 매핑. rate 색과 섞어 쓰지 않는다 — health 는 0~1
+     단조 스케일이고 rate 는 1.0 중심 발산형이다. 같은 색을 공유하면 지도에서
+     두 층이 같은 뜻으로 읽힌다.
+     낮을수록 위기 → --health-crit, 높을수록 차분 → --health-ok.
+     지역 fill 은 채도를 낮춰 물러나 있으므로 여기는 그보다 한 단 선명하다 —
+     클러스터 점이 주인공이다. */
+  --health-crit: #D2603C;
+  --health-mid:  #B98A55;
+  --health-ok:   #86A9BE;
+  --cluster-edge: #0B1016;  /* 점 윤곽. 지역 색에서 점을 떼어낸다 */
 }

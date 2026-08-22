@@ -19,9 +19,18 @@
        지역 path 에 :hover 를 걸면 나중에 그려진 이웃 지역이 stroke 을 덮는다. */
     #hover-outline { fill: none; stroke: var(--hover); stroke-width: 1.6; pointer-events: none; }
     .no-data { fill: var(--no-data); }
+    /* 클러스터 점 = 주인공. fill 은 health 에 따라 main.js 가 정한다.
+       pointer-events 를 끊어야 점 위에서도 아래 지역의 호버·클릭이 그대로 산다. */
+    .cluster { stroke: var(--cluster-edge); stroke-width: 0.7; pointer-events: none; }
     /* 호버한 지역 이름 — 지도 우상단 */
     #hover-name { position: absolute; top: 8px; right: 10px; font-size: 13px;
                   color: var(--ink-dim); pointer-events: none; }
+    /* ⚠ 가상 데이터 표시. 클러스터·건물이 실데이터로 바뀌면 이 배지를 지운다.
+       (detail.html 에도 같은 뜻의 배지가 따로 있다) */
+    #mock-badge { position: absolute; top: 8px; left: 10px;
+                  font-size: 12px; letter-spacing: 0.02em;
+                  color: var(--alert); border: 1px solid var(--alert);
+                  border-radius: 3px; padding: 5px 9px; pointer-events: none; }
     #inset-box { fill: none; stroke: var(--line-soft); stroke-width: 1; stroke-dasharray: 4 3; }
     #controls { margin-top: 12px; }
     #month { font-size: 20px; font-variant-numeric: tabular-nums; }
@@ -33,7 +42,12 @@
     <div id="map-box">
       <svg id="map" viewBox="0 0 900 700" xmlns="http://www.w3.org/2000/svg">
         <g id="regions"></g>
+        <!-- ⚠ 가상 클러스터 (clusters.mock.json). 지역 뒤에 붙어 위에 그려진다. -->
+        <g id="clusters"></g>
       </svg>
+      <!-- ⚠ 클러스터 위기도와 건물 배치는 둘 다 가상 데이터다.
+           실데이터로 교체하면 이 배지를 지운다. -->
+      <div id="mock-badge" hidden>클러스터·건물 = 가상 데이터</div>
       <div id="hover-name"></div>
     </div>
     <div id="controls">
