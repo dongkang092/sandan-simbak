@@ -5,6 +5,11 @@
 // ⚠ 건물은 data/processed/buildings.mock.json 의 **가상 데이터**다.
 //   실제 공장 위치가 아니다. 팩토리온 실데이터 확보 후 파일과 함께
 //   아래 renderBuildings() / #mock-badge 를 정리한다.
+//
+// 건물은 흩어진 상자가 아니라 **클러스터 = 업종 하나**의 구성으로 온다.
+// 상자(box)와 원통(cyl) 두 형태, 앵커(중심 대기업)/부속/위성(협력 중소) 세 역할.
+// 앵커와 위성의 차이는 크기·높이·명도로만 나타낸다 — **둘을 잇는 선은 그리지
+// 않는다.** 기업 간 협력 관계는 공개 데이터에 없다 (CLAUDE.md "연쇄 층").
 
 import { cssRGB, lerp, rgb } from "./theme.js";
 
@@ -34,7 +39,12 @@ const TOP = cssRGB("--land-top");
 // --bldg-high 그대로면 땅 윗면(--land-top)과 명도가 비슷해 경계가 안 보이므로
 // --bldg-low 쪽으로 35% 섞어 한 단 낮춘다. 색값은 theme.css 에만 있다.
 const BLDG_TOP = cssRGB("--bldg-top");
+const BLDG_ANCHOR_TOP = cssRGB("--bldg-anchor-top");
 const BLDG_WALL = lerp(cssRGB("--bldg-low"), cssRGB("--bldg-high"), 0.65);
+// 단지 바닥이 건물 밖으로 나오는 여유(px). 위쪽 PAD(viewBox 여유)와 다른 값이다.
+const PAD_OUT = 3.0;
+const PAD_FILL = cssRGB("--cluster-pad");
+const PAD_ALPHA = 0.5;   // 1 이면 깔개가 땅을 덮어 회색 판처럼 보인다
 
 // path 문자열에서 숫자만 순서대로 뽑아 x, y 번갈아 읽는다.
 // frames.json 의 path 는 M/L/Z 절대좌표만 쓴다.
@@ -143,6 +153,65 @@ for (let i = LAYERS - 1; i >= 0; i--) {
 //   앞면 = 바닥 앞변(y) ~ 윗면 앞변(y-h) 사이.        어둡게 (BLDG_WALL)
 // 두 면 다 축 정렬 사각형이라 rect 로 그린다. 서로 겹치지 않아 순서는 상관없다.
 // buildings.mock.json 을 삭제하면 mockBuildings 가 빈 배열이 되어 아무것도 안 그린다.
+function rect(g, x, y, w, h, fill) {
+  const el = document.createElementNS(SVG_NS, "rect");
+  el.setAttribute("x", x);
+  el.setAttribute("y", y);
+  el.setAttribute("width", w);
+  el.setAttribute("height", h);
+  el.setAttribute("fill", fill);
+  g.appendChild(el);
+  return el;
+}
+
+function circle(g, cx, cy, r, fill) {
+  const el = document.createElementNS(SVG_NS, "circle");
+  el.setAttribute("cx", cx);
+  el.setAttribute("cy", cy);
+  el.setAttribute("r", r);
+  el.setAttribute("fill", fill);
+  g.appendChild(el);
+  return el;
+}
+
+// ⚠ 가상 단지 바닥. 클러스터에 속한 건물의 bbox + 여유. 건물이 맨땅에 흩어져
+// 있으면 "묶여 있다"가 안 읽힌다 — 깔개가 그 일을 한다.
+function renderPads() {
+  const g = document.getElementById("pads");
+  const box = {};
+  for (const b of mockBuildings) {
+    const t = box[b.clusterId] ??= { x0: Infinity, y0: Infinity,
+                                     x1: -Infinity, y1: -Infinity };
+    t.x0 = Math.min(t.x0, b.x);
+    t.x1 = Math.max(t.x1, b.x + b.w);
+    // 바닥은 (y-d)~y 구간이다. 높이(h)는 위로 자라므로 바닥에 안 들어간다.
+    t.y0 = Math.min(t.y0, b.y - b.d);
+    t.y1 = Math.max(t.y1, b.y);
+  }
+  // 깔개는 건물 bbox + 여유라서 땅 경계를 물 수 있다. 땅 모양으로 잘라낸다.
+  const clip = document.createElementNS(SVG_NS, "clipPath");
+  clip.id = "land-clip";
+  const cp = document.createElementNS(SVG_NS, "path");
+  cp.setAttribute("d", region.path);
+  clip.appendChild(cp);
+  svg.querySelector("defs").appendChild(clip);
+  g.setAttribute("clip-path", "url(#land-clip)");
+
+  for (const t of Object.values(box)) {
+    const el = rect(g, t.x0 - PAD_OUT, t.y0 - PAD_OUT,
+                    (t.x1 - t.x0) + PAD_OUT * 2, (t.y1 - t.y0) + PAD_OUT * 2,
+                    rgb(PAD_FILL));
+    el.setAttribute("rx", PAD_OUT);
+    el.setAttribute("opacity", PAD_ALPHA);
+  }
+}
+
+// ⚠ 가상 건물 렌더링. 축이 정렬돼 있어(rotateZ 없음) 보이는 면은 윗면과 앞면
+// 둘뿐이다. 그래서 상자는 rect 2개, 원통은 원 2개 + rect 1개로 끝난다.
+//   상자  윗면 = 바닥을 h 만큼 위(-y)로 옮긴 사각형 / 앞면 = 그 사이
+//   원통  바닥 원(둥근 밑동) → 앞면 rect → 윗면 원. 이 순서로 겹쳐야
+//         밑동이 둥글게 보인다. 원통은 w == d (지름) 로 들어온다.
+// 앵커는 옥상만 한 단 밝게 칠한다 (--bldg-anchor-top).
 function renderBuildings() {
   const g = document.getElementById("buildings");
   const badge = document.getElementById("mock-badge");
@@ -152,24 +221,38 @@ function renderBuildings() {
   // mockBuildings 는 y 오름차순(먼 쪽 먼저)이다. 뒤 건물을 먼저 그려야
   // 앞 건물의 벽·옥상이 그 위를 덮어 가려진다.
   for (const b of mockBuildings) {
-    const wall = document.createElementNS(SVG_NS, "rect");
-    wall.setAttribute("x", b.x);
-    wall.setAttribute("y", b.y - b.h);
-    wall.setAttribute("width", b.w);
-    wall.setAttribute("height", b.h);
-    wall.setAttribute("fill", rgb(BLDG_WALL));
-    g.appendChild(wall);
-
-    const top = document.createElementNS(SVG_NS, "rect");
-    top.setAttribute("x", b.x);
-    top.setAttribute("y", b.y - b.d - b.h);
-    top.setAttribute("width", b.w);
-    top.setAttribute("height", b.d);
-    top.setAttribute("fill", rgb(BLDG_TOP));
-    g.appendChild(top);
+    const wall = rgb(BLDG_WALL);
+    const top = rgb(b.role === "anchor" ? BLDG_ANCHOR_TOP : BLDG_TOP);
+    if (b.shape === "cyl") {
+      const r = b.w / 2;
+      const cx = b.x + r;
+      circle(g, cx, b.y - r, r, wall);            // 둥근 밑동
+      rect(g, b.x, b.y - r - b.h, b.w, b.h, wall); // 몸통
+      circle(g, cx, b.y - r - b.h, r, top);        // 윗면
+    } else {
+      rect(g, b.x, b.y - b.h, b.w, b.h, wall);              // 앞면
+      rect(g, b.x, b.y - b.d - b.h, b.w, b.d, top);         // 윗면
+    }
   }
 }
 
+// ⚠ 가상 범례. 어느 덩어리가 어느 업종인지 확인하는 용도 — 실데이터가 오면
+// 업종은 단지별 입주기업 업종명에서 온다.
+function renderLegend() {
+  const ul = document.getElementById("cluster-legend");
+  const mine = Object.entries(mock?.clusters ?? {})
+    .filter(([, c]) => c.region === key);
+  for (const [cid, c] of mine) {
+    const li = document.createElement("li");
+    const n = mockBuildings.filter((b) => b.clusterId === cid).length;
+    li.innerHTML = `${c.industryName ?? cid} ` +
+      `<span class="n">· 요소 ${n}</span>`;
+    ul.appendChild(li);
+  }
+}
+
+renderPads();
 renderBuildings();
+renderLegend();
 layout();
 new ResizeObserver(layout).observe(tilt);

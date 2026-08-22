@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """⚠ 가상(mock) 건물 데이터 생성. 실제 공장 위치가 아니다 — 느낌 확인용 임시 파일.
 
-팩토리온(전국산업단지및공장정보표준데이터) 실데이터를 확보하면
-이 스크립트와 출력 파일(data/processed/buildings.mock.json) 을 **삭제**한다.
+팩토리온 실데이터를 확보하면 이 스크립트와 출력 파일을 **삭제**한다.
 실데이터 파이프라인은 build_data.py 다. 이 파일은 거기에 손대지 않는다.
+실데이터에 무엇이 있고 없는지는 CLAUDE.md "실데이터 스키마" 절에 정리돼 있다.
 
 입력  : data/processed/frames.json  (path 가 이미 900x700 픽셀 좌표계다)
 출력  : data/processed/buildings.mock.json
 
-출력에는 건물 목록과 함께 **클러스터 요약**(clusters)이 들어간다. 건물을 격자로
-뭉쳐 놓는 단위가 이미 클러스터이므로, 그 무리의 무게중심·개수·바닥면적을
-그대로 적어 준다. scripts/build_mock_clusters.py 가 이 좌표를 읽어
-clusters.mock.json (위기도 시계열) 을 만든다.
+건물을 흩뿌리지 않는다. **클러스터 하나 = 업종 하나**이고, 그 업종을 상징하는
+구성으로 세운다 (제강동+고로+굴뚝 / 팹+사무동 / 탱크팜+굴뚝 / 사일로 …).
+구성은 INDUSTRIES 에 데이터로 적혀 있다.
 
-가상 데이터는 **MOCK_REGIONS 의 지역에만** 만든다 (지금은 안동시 하나). 22개 시군구
-전부에 깔면 파일이 커지고 지도가 점으로 뒤덮여, 느낌을 보는 목적에도 오히려 방해가
-된다. 실데이터가 오면 이 스크립트 자체가 사라지므로 범위를 넓힐 이유도 없다.
+각 클러스터는 **앵커 1채 + 부속 + 위성 다수** 구조다. 앵커(중심 대기업)와
+위성(협력 중소)의 차이는 **크기와 높이로만** 표현한다 — 둘을 잇는 선은 그리지
+않는다. 기업 간 협력 관계는 공개 데이터에 없다 (CLAUDE.md "연쇄 층").
 
-건물 수는 지역 면적에만 비례한다. "구미가 더 산업적이다" 같은 의미를
-넣지 않는다 — 가상 데이터가 실제 통계처럼 읽히면 안 된다.
+가상 데이터는 MOCK_REGIONS 의 지역에만 만든다 (지금은 안동시 하나). 안동은
+시험용 무대이고, 업종은 **경상북도 주요 업종을 골고루** 넣어 디자인을 확인한다 —
+안동의 실제 업종 구성이 아니다. 실데이터에서 업종은 단지별 입주기업 업종명에서
+온다 (경북 입주기업 현황 + 생산품 텍스트 사전).
 
 표준 라이브러리만 사용한다.
 """
@@ -35,59 +36,113 @@ SRC = ROOT / "data" / "processed" / "frames.json"
 OUT = ROOT / "data" / "processed" / "buildings.mock.json"
 
 WARNING = (
-    "가상 데이터. 실제 공장 위치도, 실제 산업단지 경계도 아니다. "
-    "팩토리온 실데이터로 교체 후 이 파일을 삭제할 것."
+    "가상 데이터. 실제 공장 위치도, 실제 산업단지도, 실제 업종 구성도 아니다. "
+    "업종은 경북 주요 업종을 디자인 확인용으로 흩어 놓은 것이다. "
+    "팩토리온·산단 경계 실데이터로 교체 후 이 파일을 삭제할 것."
 )
 
-# 가상 데이터를 만들 지역. frames.json 의 regions 키. 여기 없는 지역은
-# 건물도 클러스터도 없다 — 전체 지도에서 점이 안동시에만 찍힌다.
+# 가상 데이터를 만들 지역. frames.json 의 regions 키.
 MOCK_REGIONS = ("andong",)
 
-# 잘라내기(out[:target]) 후 이만큼도 남지 않은 무리는 클러스터로 보지 않는다.
-# 건물 한두 채에 점을 찍으면 지도에서 산업단지가 아니라 먼지로 읽힌다.
-MIN_MEMBERS = 3
+# 건물 치수의 기준 단위(px). 지역 크기에 비례시켜 어느 시군이든 같은 비율로 보이게
+# 한다. 안동은 sqrt(면적)=141 → BASE≈4.1px. 아래 INDUSTRIES 의 숫자는 전부
+# 이 단위의 배수다.
+BASE_DIV = 34.0
+BASE_MIN, BASE_MAX = 2.6, 5.2
 
-# 무게중심이 sp(격자 간격) 의 이 배수 안에 있는 무리는 한 클러스터로 합친다.
-# 배치는 중심을 여러 번 다시 뽑기 때문에(build_region) 같은 자리에 두세 무리가
-# 겹쳐 앉는다 — 합치지 않으면 전체 지도에서 점 두세 개가 한 점처럼 포개진다.
-MERGE_SP = 2.0
+# 클러스터 반경(부속·위성이 앉는 범위)과 클러스터 중심 간 최소 거리. BASE 배수.
+CLUSTER_R = 6.5
+CENTER_GAP = 13.0
 
-# 면적(px²) 당 건물 1개. 1px ≈ 278m 이므로 1px² ≈ 0.077km².
-DENSITY = 180.0
-MIN_N, MAX_N = 10, 120
-
-# 클러스터 격자 간격. 건물 크기는 전부 이 값의 비율로 정하므로
-# sp 를 키우면 건물이 같은 비율로 커진다. 땅 폭이 90~200px 인데
-# 예전 sp(3~6)로는 건물이 1~4px 밖에 안 돼 화면에서 읽히지 않았다.
-SP_MIN, SP_MAX = 6.5, 13.0
-SP_DIV = 8.0        # sp = sqrt(면적) / SP_DIV, 위 범위로 clamp
-
-# 건물 사이 최소 간격(px). 격자 여유와 겹침 판정 양쪽에서 이 값을 뺀다 —
-# 상자가 맞붙으면 벽면이 이어져 한 덩어리로 읽힌다.
+# 건물 사이 최소 간격(px). 상자가 맞붙으면 벽면이 이어져 한 덩어리로 읽힌다.
 GAP = 1.0
 
-# 건물 종류. w = sp 의 비율, d = w 의 비율, h = min(w,d) 의 배수.
-# 높이를 **바닥 대비 비율**로 주는 게 핵심이다. 절대값으로 주면 전부 비슷한
-# 키가 되어 아파트 단지처럼 보인다. 화면에서는 rotateX 로 높이만 cos(64°)≈0.44
-# 배 눌리므로, 실루엣 비율은 (h × 0.44) / w 로 읽힌다 (각도는 detail.html #tilt).
-#   hall  : 큰 공장동. 넓고 낮다 (실루엣 0.25~0.4).
-#   shed  : 작은 창고. 다수. 낮다 (0.55~0.9).
-#   block : 중간 (0.8~1.2).
-#   tower : 좁고 높다. 전체의 10~15% 만 (1.8~2.8).
-#            (w_lo, w_hi, dw_lo, dw_hi, h_lo, h_hi)
-CLASSES = {
-    "hall":  (0.62, 0.90, 0.40, 0.75, 0.75, 1.15),
-    "shed":  (0.26, 0.42, 0.55, 1.10, 1.15, 1.75),
-    "block": (0.44, 0.60, 0.70, 1.15, 1.40, 2.10),
-    "tower": (0.20, 0.30, 0.85, 1.25, 3.00, 4.60),
+
+def part(role, kind, n, w, d, h, label, row=False):
+    """구성 요소 하나. w/d/h 는 BASE 배수.
+    role  : anchor(중심 대기업) / prop(앵커 부속) / sat(협력 중소)
+    kind  : box(상자) / cyl(원통 — 탱크·사일로·굴뚝·고로)
+    row   : True 면 n 개를 일렬로 세운다 (사일로·탱크팜은 줄이 서야 읽힌다)
+    """
+    return {"role": role, "kind": kind, "n": n,
+            "w": w, "d": d, "h": h, "label": label, "row": row}
+
+
+# 경상북도 주요 업종. 순서대로 클러스터에 배정된다.
+# 형태의 요점은 **실루엣이 서로 달라야 한다**는 것이다. rotateX 때문에 높이는
+# 0.44배로 눌리므로(CLAUDE.md), 높이 차이는 과장해야 화면에서 구분된다.
+INDUSTRIES = {
+    "steel": {
+        "name": "철강·1차금속", "where": "포항",
+        # 아주 길고 낮은 제강·압연동 + 고로 + 굴뚝. 수평이 지배한다.
+        "parts": [
+            part("anchor", "box", 1, 4.2, 1.3, 1.0, "제강동"),
+            part("prop", "box", 1, 3.2, 0.8, 0.7, "압연동"),
+            part("prop", "cyl", 2, 0.9, 0.9, 3.4, "고로", row=True),
+            part("prop", "cyl", 2, 0.3, 0.3, 4.8, "굴뚝"),
+            part("sat", "box", 5, 0.8, 0.7, 0.6, "협력사"),
+        ],
+    },
+    "electronics": {
+        "name": "전자·영상음향", "where": "구미",
+        # 거대한 단일 매스(팹) + 사무 타워. 덩어리 하나가 압도한다.
+        "parts": [
+            part("anchor", "box", 1, 3.0, 2.3, 1.7, "팹"),
+            part("prop", "box", 2, 1.3, 0.9, 0.9, "부속동"),
+            part("prop", "box", 1, 0.7, 0.6, 2.8, "사무동"),
+            part("sat", "box", 6, 0.7, 0.6, 0.5, "협력사"),
+        ],
+    },
+    "chemical": {
+        "name": "화학·고무플라스틱", "where": "김천",
+        # 탱크팜이 주인공. 낮은 원통 여러 개 + 아주 높은 굴뚝 + 파이프랙.
+        "parts": [
+            part("anchor", "box", 1, 1.6, 1.2, 1.1, "반응동"),
+            part("prop", "cyl", 6, 1.0, 1.0, 1.0, "저장탱크", row=True),
+            part("prop", "cyl", 1, 0.28, 0.28, 5.4, "굴뚝"),
+            part("prop", "box", 1, 3.0, 0.18, 0.4, "파이프랙"),
+            part("sat", "box", 4, 0.7, 0.6, 0.5, "협력사"),
+        ],
+    },
+    "auto": {
+        "name": "자동차부품", "where": "경산·영천",
+        # 중간 크기 프레스·조립동이 여러 채. 비슷한 덩어리의 반복.
+        "parts": [
+            part("anchor", "box", 1, 2.4, 1.5, 0.9, "프레스동"),
+            part("prop", "box", 2, 1.7, 1.2, 0.7, "조립동"),
+            part("sat", "box", 6, 0.9, 0.8, 0.6, "협력사"),
+        ],
+    },
+    "bio": {
+        "name": "바이오·백신", "where": "안동",
+        # 작고 정갈한 고층 + 저온탱크. 바닥은 작은데 키가 크다.
+        "parts": [
+            part("anchor", "box", 1, 1.3, 1.1, 2.2, "생산동"),
+            part("prop", "box", 1, 1.0, 0.7, 1.6, "연구동"),
+            part("prop", "cyl", 3, 0.45, 0.45, 1.1, "저온탱크", row=True),
+            part("sat", "box", 4, 0.6, 0.5, 0.7, "협력사"),
+        ],
+    },
+    "food": {
+        "name": "식료품", "where": "안동·영주",
+        # 낮은 가공동 + 사일로 줄. 실루엣이 톱니처럼 뾰족하다.
+        "parts": [
+            part("anchor", "box", 1, 1.8, 1.1, 0.6, "가공동"),
+            part("prop", "cyl", 5, 0.55, 0.55, 2.0, "사일로", row=True),
+            part("prop", "box", 1, 1.2, 0.8, 0.5, "저장동"),
+            part("sat", "box", 5, 0.7, 0.6, 0.45, "협력사"),
+        ],
+    },
 }
-# 배치 후 실현 비율은 이것과 다르다 — 바닥이 큰 hall 이 경계/겹침 판정에서
-# 더 많이 탈락하고 tower 가 더 많이 살아남는다. tower 는 실현 12% 를 노려
-# 낮게 잡는다. 바꿨으면 --stats 로 실현 비율을 확인할 것.
-MIX = {"tower": 0.11, "hall": 0.15, "block": 0.22}   # 나머지는 shed
-H_MIN = 2.0   # 아무리 낮아도 상자로 보이게 하는 하한
-# cos(detail.html #tilt 의 rotateX). --stats 의 실루엣 계산에만 쓴다.
-FORESHORTEN = 0.44
+
+# 화면에서 높이만 cos(64°)≈0.44 배로 눌린다 (detail.html #tilt). 아래 INDUSTRIES
+# 의 높이 값은 눌리기 전 기준이라, 눌린 뒤에도 실루엣이 읽히도록 한 번 키운다.
+# **틸트 각도를 바꾸면 이 값도 다시 본다.** 0.62/0.44 ≈ 1.4 가 기준선이다.
+HEIGHT_GAIN = 1.45
+
+JITTER = 0.14        # 치수 흔들림 (±비율). 0 이면 복제품처럼 보인다
+SAT_JITTER = 0.35    # 위성은 더 들쭉날쭉해야 한다
+TRIES = 120          # 위치 rejection sampling 횟수
 
 
 # ── 기하 (순수 파이썬) ──────────────────────────────────
@@ -149,8 +204,8 @@ def fits(x, y, w, d, ring):
 
 
 def overlaps(a, placed):
-    """이미 놓인 건물과 바닥이 GAP 안으로 접근하는가. 클러스터 중심은 서로
-    독립이라 클러스터끼리 포개질 수 있어 여기서 한 번 걸러야 한다."""
+    """이미 놓인 건물과 바닥이 GAP 안으로 접근하는가. 원통도 바닥은 정사각형으로
+    본다 — 이 투영에서는 원통이 사각형 자리를 차지한다."""
     ax0, ax1 = a["x"] - GAP, a["x"] + a["w"] + GAP
     ay0, ay1 = a["y"] - a["d"] - GAP, a["y"] + GAP
     for b in placed:
@@ -160,161 +215,143 @@ def overlaps(a, placed):
     return False
 
 
-def kind_mix(want, rng):
-    """종류를 비율대로 섞은 리스트. tower 는 MIX 비율만큼만 — 좁고 높은 게
-    많아지면 특징이 아니라 기본값이 된다."""
-    kinds = []
-    for kind, frac in MIX.items():
-        kinds += [kind] * round(want * frac)
-    kinds += ["shed"] * max(0, want - len(kinds))
-    rng.shuffle(kinds)
-    return kinds[:want]
+def make(spec, base, rng, cid, jitter):
+    """치수만 정한 건물 하나 (위치는 아직 없다)."""
+    j = lambda: 1.0 + rng.uniform(-jitter, jitter)
+    w = max(0.6, spec["w"] * base * j())
+    d = max(0.6, spec["d"] * base * j())
+    if spec["kind"] == "cyl":
+        d = w                      # 원통은 바닥이 정사각형(지름)이다
+    h = max(1.2, spec["h"] * base * HEIGHT_GAIN * j())
+    return {"w": round(w, 2), "d": round(d, 2), "h": round(h, 2),
+            "shape": spec["kind"], "role": spec["role"],
+            "part": spec["label"], "clusterId": cid}
 
 
-def cluster(ring, center, want, sp, rng, placed, cid):
-    """클러스터 하나. 격자 + jitter 로 산업단지처럼 뭉쳐 배치한다.
-    placed 에 통과한 건물을 직접 넣는다. cid 는 임시 id — 배치가 끝난 뒤
-    collect_clusters() 에서 최종 id(gumi-1 …) 로 다시 붙인다."""
+def try_put(b, x, y, ring, placed):
+    """좌하단 (x, y) 에 놓아 본다. 반올림한 좌표로 판정해야 출력 기준으로 맞다."""
+    b = dict(b, x=round(x, 1), y=round(y, 1))
+    if not fits(b["x"], b["y"], b["w"], b["d"], ring):
+        return None
+    if overlaps(b, placed):
+        return None
+    placed.append(b)
+    return b
+
+
+def scatter(b, center, radius, ring, rng, placed):
+    """클러스터 반경 안에 아무 데나. 중심 쪽이 조금 더 촘촘하게 (sqrt 분포)."""
     cx, cy = center
-    kinds = kind_mix(want, rng)
-    # 칸을 개수보다 넉넉히 잡아 격자를 다 채우지 않는다 — 꽉 채우면
-    # 블록처럼 규칙적으로 보이고, 경계에 걸린 칸 때문에 개수도 못 채운다.
-    side = max(2, math.ceil(math.sqrt(want * 1.4)))
-    cells = [(i, j) for i in range(side) for j in range(side)]
-    rng.shuffle(cells)
+    for _ in range(TRIES):
+        a = rng.uniform(0, 2 * math.pi)
+        r = radius * math.sqrt(rng.random())
+        if try_put(b, cx + r * math.cos(a) - b["w"] / 2,
+                   cy + r * math.sin(a) + b["d"] / 2, ring, placed):
+            return True
+    return False
 
-    made = 0
-    for kind, (i, j) in zip(kinds, cells):
-        w_lo, w_hi, dw_lo, dw_hi, h_lo, h_hi = CLASSES[kind]
-        # 한 칸(sp)에서 GAP 을 뺀 만큼만 쓴다 → 이웃 칸과 최소 간격이 남는다.
-        room = max(1.0, sp - GAP)
-        w = min(room, sp * rng.uniform(w_lo, w_hi))
-        # 정사각형만 나오지 않게 깊이를 따로 흔든다.
-        d = min(room, w * rng.uniform(dw_lo, dw_hi))
-        # 높이는 바닥의 짧은 변 기준. hall 은 1배 미만, tower 는 3~4배.
-        h = max(H_MIN, min(w, d) * rng.uniform(h_lo, h_hi))
-        # 격자 중심 + 흔들림. jitter 는 칸에 남는 여유의 절반까지만.
-        gx = cx + (i - (side - 1) / 2) * sp
-        gy = cy + (j - (side - 1) / 2) * sp
-        gx += rng.uniform(-1, 1) * max(0.0, sp - w - GAP) * 0.5
-        gy += rng.uniform(-1, 1) * max(0.0, sp - d - GAP) * 0.5
-        # x,y = 좌하단 (y 는 아래로 증가). 반올림한 값으로 판정해야
-        # 출력 좌표 기준으로 내부가 보장된다.
-        b = {
-            "x": round(gx - w / 2, 1), "y": round(gy + d / 2, 1),
-            "w": round(w, 2), "d": round(d, 2),
-            "h": round(h, 2),
-            "clusterId": cid,
-        }
-        b["_kind"] = kind   # 통계용. 출력 직전에 지운다.
-        if not fits(b["x"], b["y"], b["w"], b["d"], ring):
+
+def put_row(items, center, radius, ring, rng, placed):
+    """n 개를 일렬로. 사일로·탱크팜은 줄이 서 있어야 시설로 읽힌다.
+    줄을 세울 자리를 못 찾으면 흩뿌리는 것으로 물러난다."""
+    cx, cy = center
+    pitch = max(i["w"] for i in items) + GAP * 1.6
+    span = pitch * len(items)
+    for _ in range(TRIES):
+        a = rng.uniform(0, 2 * math.pi)
+        r = radius * rng.uniform(0.35, 1.0)
+        x0 = cx + r * math.cos(a) - span / 2
+        y0 = cy + r * math.sin(a)
+        # 줄 전체가 들어가는지 먼저 확인한다 — 절반만 서면 더 어색하다.
+        probe = [dict(it, x=round(x0 + k * pitch, 1), y=round(y0, 1))
+                 for k, it in enumerate(items)]
+        if all(fits(p["x"], p["y"], p["w"], p["d"], ring) for p in probe) \
+                and not any(overlaps(p, placed) for p in probe):
+            placed.extend(probe)
+            return True
+    return all(scatter(it, center, radius, ring, rng, placed) for it in items)
+
+
+def build_cluster(ring, center, industry, base, rng, cid, placed):
+    """클러스터 하나. 앵커를 중심에 세우고 부속·위성을 그 주위에 앉힌다.
+    앵커가 못 서면 이 클러스터는 포기한다 (좁은 자락에 걸린 경우)."""
+    spec = INDUSTRIES[industry]
+    radius = CLUSTER_R * base
+    anchor_spec = next(p for p in spec["parts"] if p["role"] == "anchor")
+    cx, cy = center
+    # try_put 은 좌표가 붙은 **새 dict** 를 준다. 그걸 받아야 cx/cy 를 읽을 수 있다.
+    anchor = try_put(make(anchor_spec, base, rng, cid, JITTER),
+                     cx, cy, ring, placed)
+    if anchor is None:
+        return None
+
+    for p in spec["parts"]:
+        if p["role"] == "anchor":
             continue
-        if overlaps(b, placed):
-            continue
-        placed.append(b)
-        made += 1
-    return made
+        jit = SAT_JITTER if p["role"] == "sat" else JITTER
+        items = [make(p, base, rng, cid, jit) for _ in range(p["n"])]
+        if p["row"] and len(items) > 1:
+            put_row(items, center, radius, ring, rng, placed)
+        else:
+            for it in items:
+                scatter(it, center, radius, ring, rng, placed)
+    return anchor
 
 
-def build_region(ring, rng, key):
-    area = area_of(ring)
-    target = max(MIN_N, min(MAX_N, round(area / DENSITY)))
-    sp = max(SP_MIN, min(SP_MAX, math.sqrt(area) / SP_DIV))
-    n_clusters = max(2, min(4, 2 + target // 40))
-
-    out = []
-    seq = 0
-    # 클러스터 중심이 좁은 자락에 걸리면 격자가 거의 다 밖으로 나간다 →
-    # 목표 개수에 못 미치면 중심을 다시 뽑아 몇 번 더 시도한다.
-    for attempt in range(n_clusters * 6):
-        if len(out) >= target:
+def pick_centers(ring, n, gap, rng):
+    """서로 gap 이상 떨어진 클러스터 중심 n 개. 못 채우면 있는 만큼만 준다."""
+    centers = []
+    for _ in range(n * 200):
+        if len(centers) >= n:
             break
         c = pick_interior(ring, rng)
         if c is None:
             break
-        want = max(3, round(target / n_clusters))
-        seq += 1
-        cluster(ring, c, want, sp, rng, out, f"{key}#{seq}")
-    return out[:target], sp
+        if all(math.dist(c, o) >= gap for o in centers):
+            centers.append(c)
+    return centers
 
 
-def merge_near(groups, dist):
-    """무게중심이 dist 안에 있는 무리를 단일 연결(single-linkage)로 합친다.
-    무리 수가 지역당 열 몇 개라 O(n²) 반복으로 충분하다."""
-    def cen(g):
-        return (sum(b["x"] + b["w"] / 2 for b in g) / len(g),
-                sum(b["y"] - b["d"] / 2 for b in g) / len(g))
+def build_region(ring, key, rng):
+    """지역 하나. 업종 목록을 순서대로 클러스터에 배정한다."""
+    base = max(BASE_MIN, min(BASE_MAX, math.sqrt(area_of(ring)) / BASE_DIV))
+    keys = list(INDUSTRIES)
+    centers = pick_centers(ring, len(keys), CENTER_GAP * base, rng)
 
-    groups = [list(g) for g in groups]
-    merged = True
-    while merged:
-        merged = False
-        cs = [cen(g) for g in groups]
-        for i in range(len(groups)):
-            for j in range(i + 1, len(groups)):
-                if math.dist(cs[i], cs[j]) < dist:
-                    groups[i] += groups[j]
-                    del groups[j]
-                    merged = True
-                    break
-            if merged:
-                break
-    return groups
-
-
-def collect_clusters(key, buildings, sp):
-    """클러스터 요약 + 최종 id. 씨앗 중심이 아니라 **살아남은 건물의 무게중심**을
-    쓴다 — 경계·겹침 판정과 잘라내기로 배치가 한쪽으로 치우치므로, 전체 지도의
-    점이 건물 무리와 같은 자리에 찍히려면 결과를 보고 정해야 한다.
-
-    MIN_MEMBERS 미달 무리는 버린다. 그 건물들은 임시 id 를 그대로 들고 있으므로
-    호출한 쪽에서 걸러낸다 (반환된 dict 에 없는 clusterId).
-    """
-    groups = {}
-    for b in buildings:
-        groups.setdefault(b["clusterId"], []).append(b)
-
-    keep = merge_near(groups.values(), sp * MERGE_SP)
-    keep = [g for g in keep if len(g) >= MIN_MEMBERS]
-    keep.sort(key=lambda g: -len(g))
-
-    out = {}
-    for n, g in enumerate(keep, start=1):
-        cid = f"{key}-{n}"
-        for b in g:
-            b["clusterId"] = cid
-        # 건물 바닥 중심의 평균. y 는 아래로 증가하고 바닥은 (y-d)~y 구간이다.
-        out[cid] = {
-            "region": key,
-            "cx": round(sum(b["x"] + b["w"] / 2 for b in g) / len(g), 1),
-            "cy": round(sum(b["y"] - b["d"] / 2 for b in g) / len(g), 1),
-            "count": len(g),
-            "area": round(sum(b["w"] * b["d"] for b in g), 1),
-        }
-    return out
-
-
-def report(buildings):
-    """CLASSES / MIX 를 손본 뒤 실제로 어떤 분포가 나왔는지 확인하는 용도."""
-    allb = [b for v in buildings.values() for b in v]
-    n = len(allb)
-    def q(vals, p):
-        vals = sorted(vals)
-        return vals[int(p * (len(vals) - 1))]
-    print("  종류      개수   비율   바닥w(중앙)  높이h(중앙)  실루엣 h*.62/w")
-    for kind in ("hall", "shed", "block", "tower"):
-        g = [b for b in allb if b["_kind"] == kind]
-        if not g:
+    placed, clusters = [], {}
+    n = 0
+    for center, ind in zip(centers, keys):
+        cid = f"{key}-{n + 1}"
+        before = len(placed)
+        anchor = build_cluster(ring, center, ind, base, rng, cid, placed)
+        if anchor is None:
             continue
-        sil = [b["h"] * FORESHORTEN / b["w"] for b in g]
-        print(f"    {kind:6s} {len(g):5d} {100*len(g)/n:5.1f}%"
-              f"      {q([b['w'] for b in g], .5):5.1f}"
-              f"      {q([b['h'] for b in g], .5):6.1f}"
-              f"       {q(sil, .5):.2f}")
-    ws = [b["w"] for b in allb]
-    hs = [b["h"] for b in allb]
-    print(f"  바닥 w  p05/p50/p95 = {q(ws,.05):.1f} / {q(ws,.5):.1f} / {q(ws,.95):.1f}")
-    print(f"  높이 h  p05/p50/p95 = {q(hs,.05):.1f} / {q(hs,.5):.1f} / {q(hs,.95):.1f}")
+        n += 1
+        members = placed[before:]
+        clusters[cid] = {
+            "region": key,
+            "industry": ind,
+            "industryName": INDUSTRIES[ind]["name"],
+            # 점을 찍는 자리는 앵커 위다 — 클러스터의 무게중심이 아니라
+            # 사람이 "여기가 그 단지"라고 보는 지점이다.
+            "cx": round(anchor["x"] + anchor["w"] / 2, 1),
+            "cy": round(anchor["y"] - anchor["d"] / 2, 1),
+            "count": len(members),
+            "area": round(sum(b["w"] * b["d"] for b in members), 1),
+        }
+    return placed, clusters, base
+
+
+def report(buildings, clusters):
+    """INDUSTRIES 를 손본 뒤 실제로 어떤 구성이 나왔는지 확인하는 용도."""
+    print("  업종            앵커 바닥(w×d)  최고 높이  요소  실루엣(h*.44/w)")
+    for cid, c in clusters.items():
+        bs = [b for v in buildings.values() for b in v if b["clusterId"] == cid]
+        a = next(b for b in bs if b["role"] == "anchor")
+        tall = max(bs, key=lambda b: b["h"])
+        print(f"  {c['industryName']:14s} {a['w']:5.1f}×{a['d']:4.1f}"
+              f"    {tall['h']:6.1f}  {len(bs):4d}"
+              f"   {a['h'] * 0.44 / a['w']:.2f}  ({tall['part']})")
 
 
 def main():
@@ -322,31 +359,22 @@ def main():
     ap.add_argument("--seed", type=int, default=20260822,
                     help="난수 시드. 같은 시드면 같은 배치가 나온다.")
     ap.add_argument("--stats", action="store_true",
-                    help="종류별 실현 비율 / 바닥·높이 분포를 찍는다.")
+                    help="클러스터별 구성·치수를 찍는다.")
     args = ap.parse_args()
 
     data = json.loads(SRC.read_text(encoding="utf-8"))
     rng = random.Random(args.seed)
 
-    buildings = {}
-    clusters = {}
+    buildings, clusters = {}, {}
     for key in MOCK_REGIONS:
-        region = data["regions"][key]
-        ring = parse_ring(region["path"])
-        placed, sp = build_region(ring, rng, key)
-        found = collect_clusters(key, placed, sp)
+        ring = parse_ring(data["regions"][key]["path"])
+        placed, found, base = build_region(ring, key, rng)
+        buildings[key] = placed
         clusters.update(found)
-        # 클러스터에 못 든 낙오 건물은 버린다 — 소속 없는 clusterId 가 남으면
-        # clusters.mock.json 과 짝이 맞지 않는다.
-        buildings[key] = [b for b in placed if b["clusterId"] in found]
+        print(f"  {key}: BASE {base:.1f}px")
 
     if args.stats:
-        report(buildings)
-
-    # _kind 는 스키마에 없다. 출력 전에 제거한다.
-    for v in buildings.values():
-        for b in v:
-            b.pop("_kind", None)
+        report(buildings, clusters)
 
     OUT.write_text(
         json.dumps({"_WARNING": WARNING, "clusters": clusters,
@@ -358,9 +386,8 @@ def main():
     print(f"{OUT.relative_to(ROOT)}  ⚠ 가상 데이터")
     print(f"  지역 {len(buildings)}개 / 건물 {total}개 / "
           f"클러스터 {len(clusters)}개 / seed {args.seed}")
-    for key, v in sorted(buildings.items(), key=lambda kv: -len(kv[1])):
-        n = sum(1 for c in clusters.values() if c["region"] == key)
-        print(f"    {key:11s} 건물 {len(v):4d}  클러스터 {n}")
+    for cid, c in clusters.items():
+        print(f"    {cid:11s} {c['industryName']:14s} 요소 {c['count']:3d}")
 
 
 if __name__ == "__main__":

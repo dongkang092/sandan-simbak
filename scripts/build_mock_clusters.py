@@ -141,6 +141,10 @@ def main():
         n = int(cid.rsplit("-", 1)[1])
         clusters[cid] = {
             "name": f"{base_name(regions[c['region']]['name'])}{n}산단",
+            # 업종은 buildings.mock.json 에서 그대로 통과시킨다. 화면의 시각적
+            # 상태는 여전히 health 만 쓴다 (계약) — 이건 툴팁·범례용이다.
+            "industry": c.get("industry"),
+            "industryName": c.get("industryName"),
             "region": c["region"],
             "cx": c["cx"],
             "cy": c["cy"],
