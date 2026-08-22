@@ -73,6 +73,10 @@ SVG 좌표계는 **900 × 700 고정**. 반응형은 `viewBox`로 처리한다.
 `frames.json`은 **난수로 채운 가짜 데이터**다. 실제 한전 데이터는 아직 미확보.
 스키마만 맞춰두고 UI를 먼저 완성한 뒤, 파일만 교체할 계획.
 
+`data/processed/buildings.mock.json` 은 가상 데이터다.
+팩토리온 실데이터 확보 후 삭제할 것. (생성: `scripts/build_mock_buildings.py`,
+렌더링: `src/detail.js` 의 `renderBuildings()`, 배지: `#mock-badge`)
+
 ## 데이터 출처
 
 - 전력: 한국전력공사 전력데이터 개방포털 — 아래 "실데이터 경로" 참고

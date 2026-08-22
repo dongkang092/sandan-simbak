@@ -25,14 +25,14 @@
        생겨 판이 휘어 보인다. 아이소메트릭은 평행선이 유지되는 투영이다. */
     #stage { position: absolute; inset: 0; overflow: hidden; }
 
-    /* rotateX 로 세로가 cos(52°)≈0.616 배 눌린다. #tilt 를 #stage 높이 그대로 두면
-       평면이 화면 세로의 62% 밖에 안 되므로, 눌리는 만큼 미리 늘려 둔다.
-       100% / 0.616 ≈ 162% 가 정확한 보정이지만 rotateZ 로 평면이 자기 안에서
-       돌아가며 가로로 조금 넘치므로 142% (top/bottom -21%) 로 줄인다.
+    /* rotateX 로 세로가 cos(62°)≈0.469 배 눌린다. #tilt 를 #stage 높이 그대로 두면
+       평면이 화면 세로의 47% 밖에 안 되므로, 눌리는 만큼 미리 늘려 둔다.
+       100% / 0.469 ≈ 213% 가 정확한 보정이지만 rotateZ 로 평면이 자기 안에서
+       돌아가며 가로로 조금 넘치므로 186% (top/bottom -43%) 로 줄인다.
        음수 inset 이라 위아래로 똑같이 넘치고, 결과적으로 중앙에 온다.
        #land 에 aspect-ratio 를 주면 #stage 보다 높아져 overflow 에 걸리므로 주지 않는다. */
-    #tilt { position: absolute; left: 0; right: 0; top: -21%; bottom: -21%;
-            transform: rotateX(52deg) rotateZ(-8deg); transform-origin: 50% 50%; }
+    #tilt { position: absolute; left: 0; right: 0; top: -43%; bottom: -43%;
+            transform: rotateX(62deg) rotateZ(-8deg); transform-origin: 50% 50%; }
 
     /* 바닥면 — #tilt 와 같은 평면에 누워 있다. 여백이 빈 곳이 아니라 공간으로
        보이게 하는 게 목적이라 #tilt 보다 훨씬 크게 뺀다. #stage 가 잘라준다.
@@ -52,11 +52,20 @@
     /* flood-color 는 SVG 속성으로는 var() 를 못 받는다 → CSS 로 건다 */
     #ground-shadow feDropShadow { flood-color: var(--shadow); flood-opacity: 0.85; }
 
+    /* ⚠ 건물은 buildings.mock.json 의 가상 데이터다. 실데이터로 교체하면
+       이 배지와 #mock-badge 관련 코드를 전부 지운다. */
+    #mock-badge { position: fixed; top: 22px; right: 26px; z-index: 10;
+                  font-size: 12px; letter-spacing: 0.02em;
+                  color: var(--alert); border: 1px solid var(--alert);
+                  border-radius: 3px; padding: 5px 9px; }
+
     #err { position: fixed; bottom: 16px; left: 26px; color: var(--alert); font-size: 13px;
            margin: 0; }
   </style>
 </head>
 <body>
+  <!-- ⚠ 가상 데이터 표시. 건물이 실데이터로 바뀌면 이 배지를 지운다. -->
+  <div id="mock-badge" hidden>건물 = 가상 데이터</div>
   <div id="hud">
     <h1 id="region-name">…</h1>
     <p id="region-stat">전력 데이터 미확보</p>
@@ -75,6 +84,8 @@
             </filter>
           </defs>
           <g id="layers"></g>
+          <!-- ⚠ 가상 건물 (buildings.mock.json). 땅보다 뒤에 있어야 위에 그려진다. -->
+          <g id="buildings"></g>
         </svg>
       </div>
     </div>

@@ -28,6 +28,12 @@
   --land-side-lit: #3A5464;  /* 두께 맨 위층 */
   --shadow:        #05080B;
 
+  /* 건물 (2.5D) — ⚠ 지금 세워지는 건물은 buildings.mock.json 의 가상 데이터다.
+     땅과 확실히 구분되는 밝은 회청색. 실데이터로 바꿔도 색은 그대로 쓴다. */
+  --bldg-top:  #B4C0CA;  /* 옥상 */
+  --bldg-high: #7C8B98;  /* 벽 위쪽 */
+  --bldg-low:  #26323C;  /* 벽 아래쪽 (땅에 닿는 곳) */
+
   /* rate 발산형 매핑. main.js 가 이 세 값 사이를 RGB 선형 보간한다.
      rate<=0.70 → --decline, rate=1.0 → --neutral, rate>=1.30 → --growth.
      채도를 낮게 유지한다. 선명해지면 지도가 신호등처럼 보인다. */

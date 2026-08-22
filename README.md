@@ -71,3 +71,16 @@ python3 scripts/build_data.py
 
 > ⚠️ 현재 `data/processed/frames.json`의 심박 값(`rate`/`size`/`irr`)은
 > **난수**다. 한전 실데이터는 아직 확보하지 않았다.
+
+### 공장 위치
+
+팩토리온 전국산업단지및공장정보표준데이터 — 아직 미확보.
+
+> ⚠️ 현재 `detail.html` 에 세워지는 건물은
+> `data/processed/buildings.mock.json` 의 **가상 데이터**다. 실제 공장 위치가
+> 아니고 개수·크기·높이에 아무 의미가 없다. 화면 우상단에 "건물 = 가상 데이터"
+> 배지가 뜬다. 팩토리온 실데이터 확보 후 파일과 생성 스크립트를 삭제한다.
+>
+> ```bash
+> python3 scripts/build_mock_buildings.py    # 재생성 (--seed 로 배치 변경)
+> ```
