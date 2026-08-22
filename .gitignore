@@ -14,3 +14,6 @@ venv/
 # Local scratch
 tmp/
 *.log
+
+# 경계 원본 (33MB). scripts/build_data.py docstring의 curl로 재다운로드.
+data/geo/*.geojson
