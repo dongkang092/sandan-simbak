@@ -31,6 +31,7 @@ const { months, regions, meta } = data;
 const gRegions = document.getElementById("regions");
 const slider = document.getElementById("slider");
 const monthLabel = document.getElementById("month");
+const hoverName = document.getElementById("hover-name");
 
 // inset 점선 박스 (울릉군)
 if (meta.inset) {
@@ -42,6 +43,10 @@ if (meta.inset) {
   box.setAttribute("height", meta.inset.size);
   gRegions.appendChild(box);
 }
+
+// 호버 윤곽 — 지역 path 를 다 붙인 뒤 마지막에 append 해서 맨 위에 오게 한다.
+const hoverOutline = document.createElementNS(SVG_NS, "path");
+hoverOutline.id = "hover-outline";
 
 // 지역 path 렌더
 const paths = []; // { el, region } — hasData=true 만 담는다
@@ -55,8 +60,26 @@ for (const [key, region] of Object.entries(regions)) {
   } else {
     p.classList.add("no-data"); // 회색 고정
   }
+
+  // 호버: 이름 표시 + 윤곽 덧그리기 (hasData=false 지역도 동일하게 동작)
+  p.addEventListener("mouseenter", () => {
+    hoverName.textContent = region.name;
+    hoverOutline.setAttribute("d", region.path);
+  });
+  p.addEventListener("mouseleave", () => {
+    hoverName.textContent = "";
+    hoverOutline.removeAttribute("d");
+  });
+
+  // 클릭: 상세로 이동. key 는 frames.json 의 regions 키 그대로.
+  p.addEventListener("click", () => {
+    location.href = `detail.html?region=${encodeURIComponent(key)}`;
+  });
+
   gRegions.appendChild(p);
 }
+
+gRegions.appendChild(hoverOutline);
 
 // 슬라이더 세팅
 slider.max = months.length - 1;
